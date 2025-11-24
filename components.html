@@ -105,14 +105,14 @@
                 class="w-full border rounded px-3 py-2 text-sm"
               >
                 <option value="">All Types</option>
-                <option>CPU</option>
-                <option>GPU</option>
-                <option>MOBO</option>
-                <option>RAM</option>
-                <option>Storage</option>
-                <option>PSU</option>
-                <option>Case</option>
-                <option>Cooling</option>
+                <option value="CPU">CPU</option>
+                <option value="GPU">GPU</option>
+                <option value="MOBO">MOBO</option>
+                <option value="RAM">RAM</option>
+                <option value="Storage">Storage</option>
+                <option value="PSU">PSU</option>
+                <option value="Case">Case</option>
+                <option value="Cooling">Cooling</option>
               </select>
             </div>
 
@@ -534,6 +534,94 @@
       let editID = null;
       let currentImageUrl = null;
 
+      // ====== CATEGORY MAPPINGS (based sa screenshot ng public.components) ======
+      // UUID -> label used in UI
+      const CATEGORY_ID_TO_LABEL = {
+        "0b75a480-8751-4c03-9089-1a180d54caa5": "PSU",
+        "2bbab1a8-0a20-49da-b0fb-e932a68ca35f": "CPU",
+        "760d0169-1b6d-4769-8e16-ee98739411c3": "MOBO", // Motherboard
+        "aa06cff7-dcf2-4e74-ba06-e36073fe6037": "GPU",
+        "b12acc94-c57c-493a-a5c5-ebd565935cdc": "Case",
+        "d37a208d-1cf7-4aa3-affd-059abf0c9b86": "Storage",
+        "e4e7380f-aa46-46e7-8bee-2072ffc91401": "Cooling", // CPU Cooler
+        "e70730b3-e286-425a-8255-c9039ab7b337": "RAM", // Memory
+      };
+
+      // slug -> label
+      const CATEGORY_SLUG_TO_LABEL = {
+        psu: "PSU",
+        cpu: "CPU",
+        motherboard: "MOBO",
+        gpu: "GPU",
+        case: "Case",
+        storage: "Storage",
+        cpu_cooler: "Cooling",
+        memory: "RAM",
+      };
+
+      // raw name from category table -> label
+      const CATEGORY_NAME_TO_LABEL = {
+        PSU: "PSU",
+        CPU: "CPU",
+        Motherboard: "MOBO",
+        GPU: "GPU",
+        Case: "Case",
+        Storage: "Storage",
+        "CPU Cooler": "Cooling",
+        Memory: "RAM",
+      };
+
+      // label (dropdown) -> UUID (for saving)
+      const TYPE_LABEL_TO_CATEGORY_ID = {
+        PSU: "0b75a480-8751-4c03-9089-1a180d54caa5",
+        CPU: "2bbab1a8-0a20-49da-b0fb-e932a68ca35f",
+        MOBO: "760d0169-1b6d-4769-8e16-ee98739411c3",
+        GPU: "aa06cff7-dcf2-4e74-ba06-e36073fe6037",
+        Case: "b12acc94-c57c-493a-a5c5-ebd565935cdc",
+        Storage: "d37a208d-1cf7-4aa3-affd-059abf0c9b86",
+        Cooling: "e4e7380f-aa46-46e7-8bee-2072ffc91401",
+        RAM: "e70730b3-e286-425a-8255-c9039ab7b337",
+      };
+
+      function getTypeLabel(component) {
+        if (!component) return "N/A";
+
+        // 1) if joined category object exists
+        if (component.category && typeof component.category === "object") {
+          const cat = component.category;
+          if (cat.name) {
+            const n = String(cat.name).trim();
+            if (CATEGORY_NAME_TO_LABEL[n]) return CATEGORY_NAME_TO_LABEL[n];
+            return n;
+          }
+          if (cat.slug) {
+            const s = String(cat.slug).trim().toLowerCase();
+            if (CATEGORY_SLUG_TO_LABEL[s]) return CATEGORY_SLUG_TO_LABEL[s];
+            return s.toUpperCase();
+          }
+        }
+
+        // 2) category_slug field
+        if (component.category_slug) {
+          const s = String(component.category_slug).trim().toLowerCase();
+          if (CATEGORY_SLUG_TO_LABEL[s]) return CATEGORY_SLUG_TO_LABEL[s];
+          return s.toUpperCase();
+        }
+
+        // 3) category_id - might be UUID or slug
+        const rawId = (component.category_id || component.categoryId || "")
+          .toString()
+          .trim();
+        if (!rawId) return "N/A";
+
+        if (CATEGORY_ID_TO_LABEL[rawId]) return CATEGORY_ID_TO_LABEL[rawId];
+
+        const lower = rawId.toLowerCase();
+        if (CATEGORY_SLUG_TO_LABEL[lower]) return CATEGORY_SLUG_TO_LABEL[lower];
+
+        return rawId; // fallback
+      }
+
       // Helper: ensure value exists in <select>, then select it
       function selectOrAddOption(selectEl, value) {
         if (!selectEl || !value) return;
@@ -641,7 +729,7 @@
       }
 
       function applyFilters() {
-        const typeFilter = document.getElementById("filterType").value;
+        const typeFilter = document.getElementById("filterType").value; // label
         const brandFilter = document.getElementById("filterBrand").value;
         const stockFilter = document.getElementById("filterStock").value;
         const priceMin =
@@ -653,8 +741,9 @@
           .value.toLowerCase();
 
         filteredComponents = allComponents.filter((c) => {
-          const matchType =
-            !typeFilter || (c.category_id || "").toString() === typeFilter;
+          const typeLabel = getTypeLabel(c);
+          const matchType = !typeFilter || typeLabel === typeFilter;
+
           const matchBrand = !brandFilter || (c.brand || "") === brandFilter;
           const matchSearch =
             !search ||
@@ -727,12 +816,14 @@
                 ? "bg-green-100 text-green-700"
                 : "bg-gray-200 text-gray-600";
 
+            const typeLabel = getTypeLabel(c);
+
             return `
           <tr class="hover:bg-gray-50">
             <td class="p-3">
               ${imageCell}
             </td>
-            <td class="p-3 text-sm">${c.category_id || "N/A"}</td>
+            <td class="p-3 text-sm">${typeLabel}</td>
             <td class="p-3 text-sm font-medium">${c.brand || "N/A"}</td>
             <td class="p-3 text-sm">${c.name || c.model || "N/A"}</td>
             <td class="p-3 text-sm font-semibold">${formatCurrency(
@@ -850,8 +941,10 @@
           const res = await api().get(`/componentsadmin/${id}`);
           const c = res.data?.data || res.data;
 
-          const typeSelect = document.getElementById("type");
-          selectOrAddOption(typeSelect, c.category_id || "");
+          const label = getTypeLabel(c);
+          if (label && label !== "N/A") {
+            selectOrAddOption(document.getElementById("type"), label);
+          }
 
           selectOrAddOption(document.getElementById("brand"), c.brand || "");
           selectOrAddOption(
@@ -960,10 +1053,14 @@
             formFactor: document.getElementById("specFormFactor").value || null,
           };
 
+          const selectedLabel = document.getElementById("type").value;
+          const categoryId =
+            TYPE_LABEL_TO_CATEGORY_ID[selectedLabel] || selectedLabel;
+
           const payload = {
             name: document.getElementById("model").value,
             brand: document.getElementById("brand").value,
-            category_id: document.getElementById("type").value,
+            category_id: categoryId,
             price: parseFloat(document.getElementById("price").value) || 0,
             vendor: document.getElementById("vendor").value || null,
             stock: parseInt(document.getElementById("stock").value) || 0,
@@ -1037,3 +1134,4 @@
     </script>
   </body>
 </html>
+  
