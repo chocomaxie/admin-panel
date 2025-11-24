@@ -86,6 +86,81 @@
     </div>
   </aside>
 
+  <!-- Global Confirm Modal -->
+<div
+  id="confirmModal"
+  class="fixed inset-0 z-[100] hidden flex items-center justify-center"
+>
+  <!-- backdrop -->
+  <div class="absolute inset-0 bg-black/40"></div>
+
+  <!-- dialog -->
+  <div
+    class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 border border-gray-100"
+  >
+    <div class="flex justify-between items-start mb-3">
+      <h3
+        id="confirmModalTitle"
+        class="text-lg font-semibold text-gray-800"
+      >
+        Confirm Action
+      </h3>
+      <button
+        type="button"
+        id="confirmModalClose"
+        class="text-gray-400 hover:text-gray-600 text-xl leading-none"
+      >
+        ×
+      </button>
+    </div>
+
+    <p
+      id="confirmModalMessage"
+      class="text-sm text-gray-600 mb-4"
+    >
+      Are you sure?
+    </p>
+
+    <!-- Optional required text (for DELETE, etc.) -->
+    <div id="confirmModalInputWrapper" class="mb-4 hidden">
+      <label
+        id="confirmModalInputLabel"
+        for="confirmModalInput"
+        class="block text-xs font-medium text-gray-600 mb-1"
+      >
+        Type to confirm
+      </label>
+      <input
+        id="confirmModalInput"
+        type="text"
+        class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        autocomplete="off"
+      />
+      <p
+        id="confirmModalInputHint"
+        class="mt-1 text-[11px] text-gray-500"
+      ></p>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-2">
+      <button
+        type="button"
+        id="confirmModalCancelBtn"
+        class="px-4 py-2 rounded-lg text-sm border border-gray-200 text-gray-700 hover:bg-gray-100"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        id="confirmModalConfirmBtn"
+        class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        Confirm
+      </button>
+    </div>
+  </div>
+</div>
+
   <!-- PAGE CONTENT: dito ilalagay ng bawat page yung #page-content-inner -->
   <main id="page-content" class="flex-1 p-6 bg-gray-100">
     <!-- page-content-inner will be moved here by each page's JS -->

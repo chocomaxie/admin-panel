@@ -628,43 +628,83 @@
 
     // ---------- UPDATE STATUS ----------
     async function updateOrderStatus(orderId, status) {
-      const confirmMessages = {
-        shipped: "Mark this order as shipped?",
-        completed: "Mark this order as completed?",
-        refunded: "Process refund for this order?"
-      };
+  const messages = {
+    shipped: {
+      title: "Mark as Shipped",
+      msg: "Are you sure you want to mark this order as SHIPPED?",
+      btn: "Mark Shipped",
+      word: "SHIP",
+    },
+    completed: {
+      title: "Mark as Completed",
+      msg: "Mark this order as COMPLETED?",
+      btn: "Mark Completed",
+      word: "COMPLETE",
+    },
+    refunded: {
+      title: "Refund Order",
+      msg: "Process REFUND for this order?",
+      btn: "Refund",
+      word: "REFUND",
+    },
+  };
 
-      if (confirm(confirmMessages[status] || "Update order status?")) {
-        try {
-          await api().put(`/admin/orders/${orderId}/status`, { status });
-          showToast(`Order ${status}`);
-          closeOrderPanel();
-          loadOrders();
-        } catch (error) {
-          handleApiError(error);
-        }
-      }
-    }
+  const cfg = messages[status] || {
+    title: "Update Order Status",
+    msg: "Update order status?",
+    btn: "Confirm",
+    word: "CONFIRM",
+  };
+
+  const ok = await openConfirmModal({
+    title: cfg.title,
+    message: cfg.msg,
+    confirmText: cfg.btn,
+    confirmVariant: status === "refunded" ? "danger" : "primary",
+    requireText: cfg.word,
+    requireTextLabel: `Type ${cfg.word} to confirm:`,
+    requireTextHint: `To prevent mistakes, type ${cfg.word} in all caps.`,
+  });
+
+  if (!ok) return;
+
+  try {
+    await api().put(`/admin/orders/${orderId}/status`, { status });
+    showToast(`Order ${status}`);
+    closeOrderPanel();
+    loadOrders();
+  } catch (error) {
+    handleApiError(error);
+  }
+}
+
+
 
     // ---------- DELETE ORDER (requires typing DELETE) ----------
     async function deleteOrder(orderId) {
-      const conf = prompt(
-        "To permanently delete this order, type DELETE (all caps):"
-      );
-      if (conf !== "DELETE") {
-        alert("Delete cancelled.");
-        return;
-      }
+  const ok = await openConfirmModal({
+    title: "Delete Order",
+    message:
+      "This will permanently delete this order. This action cannot be undone.",
+    confirmText: "Delete",
+    confirmVariant: "danger",
+    requireText: "DELETE",
+    requireTextLabel: "Type DELETE to confirm:",
+    requireTextHint: "To prevent mistakes, type DELETE in all caps.",
+  });
 
-      try {
-        await api().delete(`/admin/orders/${orderId}`);
-        showToast("Order deleted");
-        closeOrderPanel();
-        loadOrders();
-      } catch (error) {
-        handleApiError(error);
-      }
-    }
+  if (!ok) return;
+
+  try {
+    await api().delete(`/admin/orders/${orderId}`);
+    showToast("Order deleted");
+    closeOrderPanel();
+    loadOrders();
+  } catch (error) {
+    handleApiError(error);
+  }
+}
+
 
     function printOrder(orderId) {
   // open a separate static page for printing

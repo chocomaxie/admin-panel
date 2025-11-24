@@ -86,12 +86,31 @@ function requireAuth() {
 }
 
 // Logout function
-function logout() {
-  if (confirm("Are you sure you want to logout?")) {
-    localStorage.removeItem("token");
-    window.location.href = "./login.html";
+// Logout function (with confirm modal, NO need to type anything)
+async function logout() {
+  if (typeof openConfirmModal === "function") {
+    const ok = await openConfirmModal({
+      title: "Logout",
+      message: "Are you sure you want to logout from the admin panel?",
+      confirmText: "Logout",
+      confirmVariant: "danger", // red button
+      // walang requireText dito, simple confirm lang
+    });
+
+    if (!ok) return; // kung cancel, wag mag-logout
+  } else {
+    // fallback kung sakaling di loaded yung modal helper
+    const ok = confirm("Are you sure you want to logout?");
+    if (!ok) return;
   }
+
+  // totoong logout
+  localStorage.removeItem("token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("user");
+  window.location.href = "./login.html";
 }
+
 
 // Utility: Format currency
 function formatCurrency(amount) {
@@ -363,4 +382,141 @@ if (typeof window !== "undefined") {
       setInterval(loadAlerts, 30000);
     }
   });
+
+  // ---------------------------------------------------------
+// GLOBAL CONFIRM MODAL
+// Usage:
+// const ok = await openConfirmModal({
+//   title: 'Delete Order',
+//   message: 'This will permanently delete this order.',
+//   confirmText: 'Delete',
+//   confirmVariant: 'danger', // 'danger' | 'primary' | 'neutral'
+//   requireText: 'DELETE', // optional
+//   requireTextLabel: 'Type DELETE to confirm:',
+//   requireTextHint: 'This action cannot be undone.'
+// });
+// if (!ok) return;
+// ---------------------------------------------------------
+function openConfirmModal(options = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("confirmModal");
+    if (!modal) {
+      console.error("confirmModal not found in DOM");
+      return resolve(false);
+    }
+
+    const titleEl = document.getElementById("confirmModalTitle");
+    const msgEl = document.getElementById("confirmModalMessage");
+    const inputWrapper = document.getElementById("confirmModalInputWrapper");
+    const inputLabel = document.getElementById("confirmModalInputLabel");
+    const inputHint = document.getElementById("confirmModalInputHint");
+    const inputEl = document.getElementById("confirmModalInput");
+    const cancelBtn = document.getElementById("confirmModalCancelBtn");
+    const confirmBtn = document.getElementById("confirmModalConfirmBtn");
+    const closeBtn = document.getElementById("confirmModalClose");
+
+    const {
+      title = "Confirm Action",
+      message = "Are you sure you want to continue?",
+      confirmText = "Confirm",
+      cancelText = "Cancel",
+      confirmVariant = "primary", // 'primary' | 'danger' | 'neutral'
+      requireText = null,
+      requireTextLabel = "Type to confirm:",
+      requireTextHint = "",
+    } = options;
+
+    // Set texts
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // Variant styling
+    confirmBtn.className =
+      "px-4 py-2 rounded-lg text-sm text-white disabled:opacity-60 disabled:cursor-not-allowed " +
+      (confirmVariant === "danger"
+        ? "bg-red-600 hover:bg-red-700"
+        : confirmVariant === "neutral"
+        ? "bg-gray-600 hover:bg-gray-700"
+        : "bg-blue-600 hover:bg-blue-700");
+
+    // Require text?
+    if (requireText) {
+      inputWrapper.classList.remove("hidden");
+      inputLabel.textContent = requireTextLabel;
+      inputHint.textContent =
+        requireTextHint || `Please type "${requireText}" to confirm.`;
+      inputEl.value = "";
+      confirmBtn.disabled = true;
+    } else {
+      inputWrapper.classList.add("hidden");
+      inputEl.value = "";
+      confirmBtn.disabled = false;
+    }
+
+    function handleInput() {
+      if (!requireText) return;
+      const ok =
+        inputEl.value.trim().toUpperCase() === requireText.toUpperCase();
+      confirmBtn.disabled = !ok;
+    }
+
+    function cleanup(result) {
+      modal.classList.add("hidden");
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      closeBtn.removeEventListener("click", onCancel);
+      inputEl.removeEventListener("input", handleInput);
+      window.removeEventListener("keydown", onKeyDown);
+      resolve(result);
+    }
+
+    function onConfirm() {
+      if (requireText) {
+        const ok =
+          inputEl.value.trim().toUpperCase() === requireText.toUpperCase();
+        if (!ok) return;
+      }
+      cleanup(true);
+    }
+
+    function onCancel() {
+      cleanup(false);
+    }
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup(false);
+      } else if (e.key === "Enter") {
+        // allow enter if not disabled
+        if (!confirmBtn.disabled) {
+          e.preventDefault();
+          onConfirm();
+        }
+      }
+    }
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    closeBtn.addEventListener("click", onCancel);
+    if (requireText) {
+      inputEl.addEventListener("input", handleInput);
+    }
+    window.addEventListener("keydown", onKeyDown);
+
+    modal.classList.remove("hidden");
+
+    // focus
+    setTimeout(() => {
+      if (requireText) {
+        inputEl.focus();
+      } else {
+        confirmBtn.focus();
+      }
+    }, 10);
+  });
+}
+
 }

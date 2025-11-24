@@ -426,78 +426,71 @@
     }
 
     // ---------- MAKE/REMOVE ADMIN with typed confirmation ----------
-    async function toggleUserRole(userId, currentRole) {
-      if (!userId) return;
-      const normalized = (currentRole || "user").toLowerCase();
-      const newRole = normalized === "admin" ? "user" : "admin";
+   async function toggleUserRole(userId, currentRole) {
+  if (!userId) return;
+  const normalized = (currentRole || "user").toLowerCase();
+  const newRole = normalized === "admin" ? "user" : "admin";
 
-      let confirmWord = "";
-      let message = "";
+  const makingAdmin = newRole === "admin";
+  const word = makingAdmin ? "ADMIN" : "REMOVE";
 
-      if (newRole === "admin") {
-        confirmWord = "ADMIN";
-        message =
-          "You are about to MAKE THIS USER AN ADMIN.\n\n" +
-          "To confirm, type ADMIN (all caps):";
-      } else {
-        confirmWord = "USER";
-        message =
-          "You are about to REMOVE ADMIN ROLE from this user.\n\n" +
-          "To confirm, type USER (all caps):";
-      }
+  const ok = await openConfirmModal({
+    title: makingAdmin ? "Make Admin" : "Remove Admin",
+    message: makingAdmin
+      ? "Make this user an ADMIN? They will have full access to the admin panel."
+      : "Remove ADMIN role from this user?",
+    confirmText: makingAdmin ? "Make Admin" : "Remove Admin",
+    confirmVariant: makingAdmin ? "primary" : "danger",
+    requireText: word,
+    requireTextLabel: `Type ${word} to confirm:`,
+    requireTextHint: "To prevent mistakes, type it in all caps.",
+  });
 
-      const input = prompt(message);
-      if (input === null) return; // cancel
-      if (input !== confirmWord) {
-        alert("Action cancelled.");
-        return;
-      }
+  if (!ok) return;
 
-      try {
-        await api().put(`/admin/users/${userId}`, { role: newRole });
-        showToast(`User role updated to ${newRole}`);
-        await loadUsers();
-      } catch (err) {
-        handleApiError(err);
-      }
-    }
+  try {
+    await api().put(`/admin/users/${userId}`, { role: newRole });
+    showToast(`User role updated to ${newRole}`);
+    await loadUsers();
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
 
     // ---------- BAN / UNBAN with typed confirmation ----------
     async function toggleUserStatus(userId, currentStatus) {
-      if (!userId) return;
-      const normalized = (currentStatus || "active").toLowerCase();
-      const newStatus = normalized === "banned" ? "active" : "banned";
+  if (!userId) return;
+  const normalized = (currentStatus || "active").toLowerCase();
+  const newStatus = normalized === "banned" ? "active" : "banned";
 
-      let confirmWord = "";
-      let message = "";
+  const banning = newStatus === "banned";
+  const word = banning ? "BAN" : "UNBAN";
 
-      if (newStatus === "banned") {
-        confirmWord = "BAN";
-        message =
-          "You are about to BAN THIS USER.\nThey will no longer be able to log in.\n\n" +
-          "To confirm, type BAN (all caps):";
-      } else {
-        confirmWord = "UNBAN";
-        message =
-          "You are about to UNBAN THIS USER and allow login again.\n\n" +
-          "To confirm, type UNBAN (all caps):";
-      }
+  const ok = await openConfirmModal({
+    title: banning ? "Ban User" : "Unban User",
+    message: banning
+      ? "Ban this user? They will no longer be able to log in."
+      : "Unban this user and allow login again?",
+    confirmText: banning ? "Ban User" : "Unban User",
+    confirmVariant: banning ? "danger" : "primary",
+    requireText: word,
+    requireTextLabel: `Type ${word} to confirm:`,
+    requireTextHint: "To prevent mistakes, type it in all caps.",
+  });
 
-      const input = prompt(message);
-      if (input === null) return; // cancel
-      if (input !== confirmWord) {
-        alert("Action cancelled.");
-        return;
-      }
+  if (!ok) return;
 
-      try {
-        await api().put(`/admin/users/${userId}`, { status: newStatus });
-        showToast(`User status updated to ${newStatus}`);
-        await loadUsers();
-      } catch (err) {
-        handleApiError(err);
-      }
-    }
+  try {
+    await api().put(`/admin/users/${userId}`, { status: newStatus });
+    showToast(`User status updated to ${newStatus}`);
+    await loadUsers();
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
+
   </script>
 </body>
 </html>

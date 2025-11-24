@@ -1144,43 +1144,60 @@ selectOrAddOption(
       }
 
       async function deleteItem(id) {
-        const confirmText = prompt(
-          "To permanently delete this component, type DELETE (all caps):"
-        );
-        if (confirmText !== "DELETE") {
-          alert("Delete cancelled.");
-          return;
-        }
-        try {
-          await api().delete(`/componentsadmin/${id}`);
-          showToast("Component deleted");
-          loadComponents();
-        } catch (err) {
-          handleApiError(err);
-        }
-      }
+  const ok = await openConfirmModal({
+    title: "Delete Component",
+    message:
+      "This will permanently delete this component. This action cannot be undone.",
+    confirmText: "Delete",
+    confirmVariant: "danger",
+    requireText: "DELETE",
+    requireTextLabel: "Type DELETE to confirm:",
+    requireTextHint: "To prevent mistakes, type DELETE in all caps.",
+  });
+
+  if (!ok) return;
+
+  try {
+    await api().delete(`/componentsadmin/${id}`);
+    showToast("Component deleted");
+    loadComponents();
+  } catch (err) {
+    handleApiError(err);
+  }
+}
 
       async function toggleStatus(id, currentStatus) {
-        try {
-          const normalized = (currentStatus || "active").toLowerCase();
-          const newStatus = normalized === "active" ? "inactive" : "active";
+  const normalized = (currentStatus || "active").toLowerCase();
+  const newStatus = normalized === "active" ? "inactive" : "active";
 
-          const actionLabel =
-            newStatus === "active" ? "activate" : "deactivate";
-          const ok = confirm(
-            `Are you sure you want to ${actionLabel} this component?`
-          );
-          if (!ok) return;
+  const activating = newStatus === "active";
+  const word = activating ? "ACTIVATE" : "DEACTIVATE";
 
-          await api().put(`/componentsadmin/${id}`, { status: newStatus });
-          showToast(
-            `Component ${newStatus === "active" ? "activated" : "deactivated"}`
-          );
-          loadComponents();
-        } catch (err) {
-          handleApiError(err);
-        }
-      }
+  const ok = await openConfirmModal({
+    title: activating ? "Activate Component" : "Deactivate Component",
+    message: activating
+      ? "Activate this component so it can be used in builds and orders?"
+      : "Deactivate this component? It will no longer be selectable in builds and orders.",
+    confirmText: activating ? "Activate" : "Deactivate",
+    confirmVariant: activating ? "primary" : "danger",
+    requireText: word,
+    requireTextLabel: `Type ${word} to confirm:`,
+    requireTextHint: `To prevent mistakes, type ${word} in all caps.`,
+  });
+
+  if (!ok) return;
+
+  try {
+    await api().put(`/componentsadmin/${id}`, { status: newStatus });
+    showToast(
+      `Component ${newStatus === "active" ? "activated" : "deactivated"}`
+    );
+    loadComponents();
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
     </script>
   </body>
 </html>
