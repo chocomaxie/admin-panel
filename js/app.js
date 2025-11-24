@@ -163,31 +163,40 @@ function handleApiError(error) {
 }
 
 // Utility: Upload image to Supabase Storage
+// js/app.js
+
 async function uploadImage(file, folder = "components") {
-  if (!supabase) {
-    throw new Error("Supabase not initialized. Please configure in Settings.");
-  }
-
-  const fileExt = file.name.split(".").pop();
-  const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-  const filePath = `${folder}/${fileName}`;
-
-  const { data, error } = await supabase.storage
-    .from("images")
-    .upload(filePath, file, {
-      cacheControl: "3600",
-      upsert: false
-    });
-
-  if (error) throw error;
-
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from("images")
-    .getPublicUrl(filePath);
-
-  return publicUrl;
+// ❗ 1) Kung wala pang Supabase config, huwag mag-throw, mag-return na lang ng null
+if (!window.SUPABASE_URL || !window.SUPABASE_KEY || !window._supabase) {
+console.warn(
+"Supabase not initialized. Skipping image upload and returning null."
+);
+// Dito ibig sabihin walang image_url, ok lang — yung component masi-save pa rin
+return null;
 }
+
+// ❗ 2) Kung naka-setup ka na ng Supabase, dito mo ilalagay yung tunay na upload code
+const fileExt = file.name.split(".").pop();
+const fileName = `${folder}/${Date.now()}-${Math.random()
+.toString(36)
+.substring(2)}.${fileExt}`;
+
+const { data, error } = await window._supabase.storage
+.from("images")
+.upload(fileName, file);
+
+if (error) {
+console.error("Supabase upload error:", error);
+throw new Error("Image upload failed");
+}
+
+const { data: publicUrlData } = window._supabase.storage
+.from("images")
+.getPublicUrl(data.path);
+
+return publicUrlData?.publicUrl || null;
+}
+
 
 // Utility: Delete image from Supabase Storage
 async function deleteImage(filePath) {
