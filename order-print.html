@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Print Order</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="js/app.js"></script>
+  <style>
+    @media print {
+      .no-print { display: none; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body onload="loadPrintPage()" class="bg-gray-100">
+
+  <div class="max-w-3xl mx-auto my-6 bg-white shadow rounded-lg p-6">
+    <div class="flex justify-between items-center mb-4 no-print">
+      <h1 class="text-2xl font-bold">Order Summary</h1>
+      <div class="space-x-2">
+        <button
+          onclick="window.print()"
+          class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+        >
+          Print
+        </button>
+        <button
+          onclick="window.close()"
+          class="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <div id="printContent">
+      <div class="text-center text-gray-500 py-10">Loading order...</div>
+    </div>
+  </div>
+
+  <script>
+    async function loadPrintPage() {
+      try {
+        // protect admin page
+        await requireAuth();
+
+        const params = new URLSearchParams(window.location.search);
+        const orderId = params.get("id");
+        if (!orderId) {
+          document.getElementById("printContent").innerHTML =
+            '<div class="text-center text-red-500 py-10">Missing order ID</div>';
+          return;
+        }
+
+        const res = await api().get(`/admin/orders/${orderId}`);
+        const order = res.data.order || res.data;
+        const items = res.data.items || order.items || [];
+
+        const userName = order.profiles?.full_name || order.user || "N/A";
+        const userEmail = order.profiles?.email || order.email || "N/A";
+
+        const totalItemsQty = items.reduce(
+          (sum, it) => sum + (it.quantity || 1),
+          0
+        );
+
+        const rows = items.map(it => {
+          const name =
+            it.name ||
+            it.component_name ||
+            (it.component && (it.component.name || it.component.model)) ||
+            "Component";
+
+          const qty = it.quantity || 1;
+          const priceEach = it.price_each || it.price || 0;
+          const subtotal = priceEach * qty;
+
+          return `
+            <tr class="border-b">
+              <td class="p-2 text-sm">${name}</td>
+              <td class="p-2 text-sm text-center">${qty}</td>
+              <td class="p-2 text-sm text-right">${formatCurrency(priceEach)}</td>
+              <td class="p-2 text-sm text-right font-semibold">${formatCurrency(subtotal)}</td>
+            </tr>
+          `;
+        }).join("");
+
+        document.getElementById("printContent").innerHTML = `
+          <!-- Header -->
+          <div class="mb-6">
+            <div class="flex justify-between items-start">
+              <div>
+                <h2 class="text-xl font-bold mb-1">PC Builder - Order</h2>
+                <p class="text-xs text-gray-500">Order ID: <span class="font-mono">${order.id}</span></p>
+              </div>
+              <div class="text-right text-xs text-gray-500">
+                <div>Date: <span class="font-semibold">${formatDateTime(order.created_at)}</span></div>
+                <div>Status: <span class="font-semibold uppercase">${order.status || "pending"}</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Customer -->
+          <div class="mb-4">
+            <h3 class="font-semibold mb-1 text-sm">Customer</h3>
+            <div class="text-sm">
+              <div>${userName}</div>
+              <div class="text-gray-600">${userEmail}</div>
+              <div class="text-gray-600">${order.phone || ""}</div>
+            </div>
+          </div>
+
+          <!-- Items -->
+          <div class="mb-4">
+            <h3 class="font-semibold mb-2 text-sm">Items (${totalItemsQty})</h3>
+            <table class="w-full text-xs border">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="p-2 text-left">Component</th>
+                  <th class="p-2 text-center w-16">Qty</th>
+                  <th class="p-2 text-right w-24">Price</th>
+                  <th class="p-2 text-right w-28">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || `
+                  <tr><td colspan="4" class="p-3 text-center text-gray-500">
+                    No items
+                  </td></tr>
+                `}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Total -->
+          <div class="flex justify-end mt-4">
+            <div class="text-sm">
+              <div class="flex justify-between gap-8">
+                <span class="font-semibold">Total:</span>
+                <span class="font-bold text-lg">${formatCurrency(order.total || 0)}</span>
+              </div>
+              <div class="text-xs text-gray-500 mt-1">
+                Payment method: ${order.payment_method || "N/A"}
+              </div>
+            </div>
+          </div>
+        `;
+
+        // optional: auto-open print dialog
+        // setTimeout(() => window.print(), 500);
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById("printContent").innerHTML =
+          '<div class="text-center text-red-500 py-10">Failed to load order</div>';
+      }
+    }
+  </script>
+</body>
+</html>
