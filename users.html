@@ -72,16 +72,7 @@
     <!-- Filters -->
     <section class="bg-white rounded-lg shadow p-4 mb-6">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div>
-          <label class="block text-xs text-gray-600 mb-1">Search</label>
-          <input 
-            id="searchInput"
-            type="text"
-            placeholder="Search name or email…"
-            onkeyup="applyUserFilters()"
-            class="w-full border rounded px-3 py-2 text-sm"
-          />
-        </div>
+        
 
         <div>
           <label class="block text-xs text-gray-600 mb-1">Role</label>
@@ -117,6 +108,17 @@
           >
             Clear Filters
           </button>
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Search</label>
+          <input 
+            id="searchInput"
+            type="text"
+            placeholder="Search name or email…"
+            onkeyup="applyUserFilters()"
+            class="w-full border rounded px-3 py-2 text-sm"
+          />
         </div>
       </div>
     </section>
@@ -417,25 +419,39 @@
 
     // ===== ACTION HANDLERS =====
 
-    // Orders button – dadalhin ka sa orders page,
-    // pwede mong gamitin later yung ?search= para auto-filter
     function viewUserOrders(emailEncoded) {
       const email = decodeURIComponent(emailEncoded || "");
       if (!email) return;
       window.location.href = `orders.html?search=${encodeURIComponent(email)}`;
     }
 
+    // ---------- MAKE/REMOVE ADMIN with typed confirmation ----------
     async function toggleUserRole(userId, currentRole) {
       if (!userId) return;
       const normalized = (currentRole || "user").toLowerCase();
       const newRole = normalized === "admin" ? "user" : "admin";
 
-      const ok = confirm(
-        newRole === "admin"
-          ? "Make this user an ADMIN?"
-          : "Remove admin role from this user?"
-      );
-      if (!ok) return;
+      let confirmWord = "";
+      let message = "";
+
+      if (newRole === "admin") {
+        confirmWord = "ADMIN";
+        message =
+          "You are about to MAKE THIS USER AN ADMIN.\n\n" +
+          "To confirm, type ADMIN (all caps):";
+      } else {
+        confirmWord = "USER";
+        message =
+          "You are about to REMOVE ADMIN ROLE from this user.\n\n" +
+          "To confirm, type USER (all caps):";
+      }
+
+      const input = prompt(message);
+      if (input === null) return; // cancel
+      if (input !== confirmWord) {
+        alert("Action cancelled.");
+        return;
+      }
 
       try {
         await api().put(`/admin/users/${userId}`, { role: newRole });
@@ -446,17 +462,33 @@
       }
     }
 
+    // ---------- BAN / UNBAN with typed confirmation ----------
     async function toggleUserStatus(userId, currentStatus) {
       if (!userId) return;
       const normalized = (currentStatus || "active").toLowerCase();
       const newStatus = normalized === "banned" ? "active" : "banned";
 
-      const ok = confirm(
-        newStatus === "banned"
-          ? "Ban this user? They will no longer be able to log in."
-          : "Unban this user and allow login again?"
-      );
-      if (!ok) return;
+      let confirmWord = "";
+      let message = "";
+
+      if (newStatus === "banned") {
+        confirmWord = "BAN";
+        message =
+          "You are about to BAN THIS USER.\nThey will no longer be able to log in.\n\n" +
+          "To confirm, type BAN (all caps):";
+      } else {
+        confirmWord = "UNBAN";
+        message =
+          "You are about to UNBAN THIS USER and allow login again.\n\n" +
+          "To confirm, type UNBAN (all caps):";
+      }
+
+      const input = prompt(message);
+      if (input === null) return; // cancel
+      if (input !== confirmWord) {
+        alert("Action cancelled.");
+        return;
+      }
 
       try {
         await api().put(`/admin/users/${userId}`, { status: newStatus });

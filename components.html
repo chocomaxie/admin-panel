@@ -623,6 +623,17 @@
       }
 
       // Helper: ensure value exists in <select>, then select it
+
+        // Helper: lagyan / i-select ang value sa specs dropdown
+function fillSpecSelect(selectId, value) {
+  if (!value) return;
+  const selectEl = document.getElementById(selectId);
+  if (!selectEl) return;
+
+  // gamitin existing helper para siguradong may option
+  selectOrAddOption(selectEl, value);
+}
+
       function selectOrAddOption(selectEl, value) {
         if (!selectEl || !value) return;
         const exists = Array.from(selectEl.options).some(
@@ -636,6 +647,36 @@
         }
         selectEl.value = value;
       }
+      // ------- SPEC HELPERS -------
+
+// Kunin ang value sa specs kahit iba ang pangalan / casing ng key
+function getSpecValue(specs, ...keys) {
+  if (!specs || typeof specs !== "object") return "";
+
+  for (const wanted of keys) {
+    // direct hit
+    if (specs[wanted] != null && specs[wanted] !== "") {
+      return String(specs[wanted]);
+    }
+
+    // case-insensitive + underscore / space tolerant
+    const wantedNorm = String(wanted).toLowerCase().replace(/\s+/g, "_");
+
+    for (const actualKey in specs) {
+      const actualNorm = actualKey.toLowerCase().replace(/\s+/g, "_");
+      if (
+        actualNorm === wantedNorm &&
+        specs[actualKey] != null &&
+        specs[actualKey] !== ""
+      ) {
+        return String(specs[actualKey]);
+      }
+    }
+  }
+
+  return "";
+}
+
 
       function initPage() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -959,45 +1000,54 @@
             c.low_stock_threshold ?? c.lowStockThreshold ?? 5;
           document.getElementById("status").value = c.status || "active";
 
-          let specs = {};
-          if (typeof c.specs === "object" && c.specs !== null) {
-            specs = c.specs;
-          } else if (typeof c.specs === "string" && c.specs.trim()) {
-            try {
-              specs = JSON.parse(c.specs);
-            } catch {
-              specs = {};
-            }
-          }
+         let specs = {};
+if (typeof c.specs === "object" && c.specs !== null) {
+  specs = c.specs;
+} else if (typeof c.specs === "string" && c.specs.trim()) {
+  try {
+    specs = JSON.parse(c.specs);
+  } catch {
+    specs = {};
+  }
+}
 
-          selectOrAddOption(
-            document.getElementById("specSocket"),
-            specs.socket || ""
-          );
-          selectOrAddOption(
-            document.getElementById("specChipset"),
-            specs.chipset || ""
-          );
-          selectOrAddOption(
-            document.getElementById("specDDR"),
-            specs.ddr || ""
-          );
-          selectOrAddOption(
-            document.getElementById("specVRAM"),
-            specs.vramGb != null ? String(specs.vramGb) : ""
-          );
-          selectOrAddOption(
-            document.getElementById("specTDP"),
-            specs.tdp != null ? String(specs.tdp) : ""
-          );
-          selectOrAddOption(
-            document.getElementById("specLength"),
-            specs.lengthMm != null ? String(specs.lengthMm) : ""
-          );
-          selectOrAddOption(
-            document.getElementById("specFormFactor"),
-            specs.formFactor || ""
-          );
+// dito na gumamit ng helper para kahit anong key name sa DB, mababasa
+selectOrAddOption(
+  document.getElementById("specSocket"),
+  getSpecValue(specs, "socket", "Socket")
+);
+
+selectOrAddOption(
+  document.getElementById("specChipset"),
+  getSpecValue(specs, "chipset", "Chipset")
+);
+
+selectOrAddOption(
+  document.getElementById("specDDR"),
+  getSpecValue(specs, "ddr", "DDR", "memory_type")
+);
+
+selectOrAddOption(
+  document.getElementById("specVRAM"),
+  getSpecValue(specs, "vramGb", "vram_gb", "vram", "VRAM (GB)")
+);
+
+selectOrAddOption(
+  document.getElementById("specTDP"),
+  getSpecValue(specs, "tdp", "TDP", "tdpW", "tdp_w")
+);
+
+selectOrAddOption(
+  document.getElementById("specLength"),
+  getSpecValue(specs, "lengthMm", "length_mm", "length")
+);
+
+selectOrAddOption(
+  document.getElementById("specFormFactor"),
+  getSpecValue(specs, "formFactor", "form_factor", "Form Factor")
+);
+
+
 
           if (c.image_url) {
             currentImageUrl = c.image_url;
@@ -1044,14 +1094,14 @@
           }
 
           const specs = {
-            socket: document.getElementById("specSocket").value || null,
-            chipset: document.getElementById("specChipset").value || null,
-            ddr: document.getElementById("specDDR").value || null,
-            vramGb: document.getElementById("specVRAM").value || null,
-            tdp: document.getElementById("specTDP").value || null,
-            lengthMm: document.getElementById("specLength").value || null,
-            formFactor: document.getElementById("specFormFactor").value || null,
-          };
+  socket: document.getElementById("specSocket").value || null,
+  chipset: document.getElementById("specChipset").value || null,
+  ddr: document.getElementById("specDDR").value || null,
+  vramGb: document.getElementById("specVRAM").value || null,
+  tdp: document.getElementById("specTDP").value || null,
+  lengthMm: document.getElementById("specLength").value || null,
+  formFactor: document.getElementById("specFormFactor").value || null,
+};
 
           const selectedLabel = document.getElementById("type").value;
           const categoryId =

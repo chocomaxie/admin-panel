@@ -65,7 +65,7 @@
       <!-- Revenue Card -->
       <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-medium text-gray-600">Revenue</h3>
+          <h3 class="text-sm font-medium text-gray-600">Total Revenue</h3>
           <span class="text-2xl">💰</span>
         </div>
         <div class="space-y-1">
@@ -80,7 +80,7 @@
       <!-- Orders Card -->
       <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-medium text-gray-600">Orders</h3>
+          <h3 class="text-sm font-medium text-gray-600">Total Orders</h3>
           <span class="text-2xl">🛒</span>
         </div>
         <div class="space-y-1">
@@ -301,68 +301,84 @@
       }
     }
 
-    async function loadKPIs() {
-      try {
-        const [ordersRes, componentsRes, usersRes] = await Promise.allSettled([
-          api().get("/admin/orders"),
-          api().get("/componentsadmin?limit=1000"),
-          api().get("/admin/users")
-        ]);
+async function loadKPIs() {
+  try {
+    const [ordersRes, componentsRes, usersRes] = await Promise.allSettled([
+      api().get("/admin/orders"),
+      api().get("/componentsadmin?limit=1000"),
+      api().get("/admin/users"),
+    ]);
 
-        let orders = [];
-        if (ordersRes.status === "fulfilled") {
-          orders = normalizeOrdersResponse(ordersRes.value.data);
-        }
-
-        let components = [];
-        if (componentsRes.status === "fulfilled") {
-          components = normalizeComponentsResponse(componentsRes.value.data);
-        }
-
-        let users = [];
-        if (usersRes.status === "fulfilled") {
-          users = normalizeUsersResponse(usersRes.value.data);
-        }
-
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const revenueToday = orders
-          .filter(o => getOrderDate(o) >= today)
-          .reduce((sum, o) => sum + getOrderTotal(o), 0);
-        
-        const revenue7d = orders
-          .filter(o => getOrderDate(o) >= sevenDaysAgo)
-          .reduce((sum, o) => sum + getOrderTotal(o), 0);
-        
-        const revenue30d = orders
-          .filter(o => getOrderDate(o) >= thirtyDaysAgo)
-          .reduce((sum, o) => sum + getOrderTotal(o), 0);
-
-        const ordersToday = orders.filter(o => getOrderDate(o) >= today).length;
-        const orders7d = orders.filter(o => getOrderDate(o) >= sevenDaysAgo).length;
-        const orders30d = orders.filter(o => getOrderDate(o) >= thirtyDaysAgo).length;
-
-        const lowStockCount = getLowStockItems(components).length;
-        const totalUsers = users.length;
-
-        document.getElementById("revenueToday").textContent = formatCurrency(revenueToday);
-        document.getElementById("revenue7d").textContent = formatCurrency(revenue7d);
-        document.getElementById("revenue30d").textContent = formatCurrency(revenue30d);
-        document.getElementById("ordersToday").textContent = ordersToday;
-        document.getElementById("orders7d").textContent = orders7d;
-        document.getElementById("orders30d").textContent = orders30d;
-        document.getElementById("lowStockCount").textContent = lowStockCount;
-        document.getElementById("totalUsers").textContent = totalUsers;
-
-      } catch (error) {
-        console.error("KPI load error:", error);
-      }
+    let orders = [];
+    if (ordersRes.status === "fulfilled") {
+      orders = normalizeOrdersResponse(ordersRes.value.data);
     }
+
+    let components = [];
+    if (componentsRes.status === "fulfilled") {
+      components = normalizeComponentsResponse(componentsRes.value.data);
+    }
+
+    let users = [];
+    if (usersRes.status === "fulfilled") {
+      users = normalizeUsersResponse(usersRes.value.data);
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // ====== TOTAL / ALL-TIME ======
+    const totalRevenue = orders.reduce(
+      (sum, o) => sum + getOrderTotal(o),
+      0
+    );
+    const totalOrders = orders.length;
+
+    // ====== 7d / 30d ======
+    const revenue7d = orders
+      .filter(o => getOrderDate(o) >= sevenDaysAgo)
+      .reduce((sum, o) => sum + getOrderTotal(o), 0);
+
+    const revenue30d = orders
+      .filter(o => getOrderDate(o) >= thirtyDaysAgo)
+      .reduce((sum, o) => sum + getOrderTotal(o), 0);
+
+    const orders7d = orders.filter(
+      o => getOrderDate(o) >= sevenDaysAgo
+    ).length;
+
+    const orders30d = orders.filter(
+      o => getOrderDate(o) >= thirtyDaysAgo
+    ).length;
+
+    const lowStockCount = getLowStockItems(components).length;
+    const totalUsers = users.length;
+
+    // kahit id name ay "revenueToday"/"ordersToday",
+    // ang laman na nito ngayon ay TOTAL (lifetime)
+    document.getElementById("revenueToday").textContent =
+      formatCurrency(totalRevenue);
+    document.getElementById("revenue7d").textContent =
+      formatCurrency(revenue7d);
+    document.getElementById("revenue30d").textContent =
+      formatCurrency(revenue30d);
+
+    document.getElementById("ordersToday").textContent = totalOrders;
+    document.getElementById("orders7d").textContent = orders7d;
+    document.getElementById("orders30d").textContent = orders30d;
+
+    document.getElementById("lowStockCount").textContent = lowStockCount;
+    document.getElementById("totalUsers").textContent = totalUsers;
+
+  } catch (error) {
+    console.error("KPI load error:", error);
+  }
+}
+
 
     async function loadCharts() {
       try {
