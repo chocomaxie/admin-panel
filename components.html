@@ -1083,58 +1083,72 @@ selectOrAddOption(
         document.getElementById("currentImage").classList.add("hidden");
       }
 
-      async function saveComponent(e) {
-        e.preventDefault();
-        try {
-          let image_url = currentImageUrl || null;
-          const imageFile = document.getElementById("imageInput").files[0];
+     async function saveComponent(e) {
+  e.preventDefault();
 
-          if (imageFile) {
-            image_url = await uploadImage(imageFile, "components");
-          }
+  try {
+    let image_url = currentImageUrl || null;
+    const imageFile = document.getElementById("imageInput").files[0];
 
-          const specs = {
-  socket: document.getElementById("specSocket").value || null,
-  chipset: document.getElementById("specChipset").value || null,
-  ddr: document.getElementById("specDDR").value || null,
-  vramGb: document.getElementById("specVRAM").value || null,
-  tdp: document.getElementById("specTDP").value || null,
-  lengthMm: document.getElementById("specLength").value || null,
-  formFactor: document.getElementById("specFormFactor").value || null,
-};
+    // upload new image kung meron
+    if (imageFile) {
+      image_url = await uploadImage(imageFile, "components");
+    }
 
-          const selectedLabel = document.getElementById("type").value;
-          const categoryId =
-            TYPE_LABEL_TO_CATEGORY_ID[selectedLabel] || selectedLabel;
+    // specs: allow null pag walang laman
+    const specs = {
+      socket: document.getElementById("specSocket").value || null,
+      chipset: document.getElementById("specChipset").value || null,
+      ddr: document.getElementById("specDDR").value || null,
+      vramGb: document.getElementById("specVRAM").value || null,
+      tdp: document.getElementById("specTDP").value || null,
+      lengthMm: document.getElementById("specLength").value || null,
+      formFactor: document.getElementById("specFormFactor").value || null,
+    };
 
-          const payload = {
-            name: document.getElementById("model").value,
-            brand: document.getElementById("brand").value,
-            category_id: categoryId,
-            price: parseFloat(document.getElementById("price").value) || 0,
-            vendor: document.getElementById("vendor").value || null,
-            stock: parseInt(document.getElementById("stock").value) || 0,
-            low_stock_threshold:
-              parseInt(document.getElementById("lowStockThreshold").value) || 5,
-            status: document.getElementById("status").value || "active",
-            image_url,
-            specs,
-          };
+    // kung lahat null, huwag na mag-send ng specs
+    const hasAnySpec = Object.values(specs).some(v => v !== null);
+    const specsPayload = hasAnySpec ? specs : null;
 
-          if (editID) {
-            await api().put(`/componentsadmin/${editID}`, payload);
-            showToast("Component updated");
-          } else {
-            await api().post("/componentsadmin", payload);
-            showToast("Component added");
-          }
+    const selectedLabel = document.getElementById("type").value;
+    // kung label (CPU/GPU/...) gagamitin natin mapping,
+    // kung uuid na, dederetso lang
+    const categoryId =
+      TYPE_LABEL_TO_CATEGORY_ID[selectedLabel] || selectedLabel || null;
 
-          closeModal();
-          loadComponents();
-        } catch (err) {
-          handleApiError(err);
-        }
-      }
+    const payload = {
+      name: document.getElementById("model").value || null,
+      brand: document.getElementById("brand").value || null,
+      category_id: categoryId,
+      price: Number(document.getElementById("price").value) || 0,
+      vendor: document.getElementById("vendor").value || null,
+      stock: Number(document.getElementById("stock").value) || 0,
+      low_stock_threshold:
+        Number(document.getElementById("lowStockThreshold").value) || 5,
+      status: document.getElementById("status").value || "active",
+      image_url,
+      specs: specsPayload,
+    };
+
+    console.log("SAVE COMPONENT PAYLOAD:", payload);
+
+    if (editID) {
+      // UPDATE
+      await api().put(`/componentsadmin/${editID}`, payload);
+      showToast("Component updated");
+    } else {
+      // CREATE
+      await api().post("/componentsadmin", payload);
+      showToast("Component added");
+    }
+
+    closeModal();
+    loadComponents();
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
 
       function closeModal() {
         document.getElementById("componentModal").classList.add("hidden");
