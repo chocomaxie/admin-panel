@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Components - Admin Panel</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <!-- Chart.js (optional, kung kailangan sa ibang page) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- OPTIONAL: base URL -->
+    <script>
+      if (typeof window.API === "undefined") {
+        window.API =
+          "https://pc-component-picker-backend-production.up.railway.app/api";
+      }
+    </script>
+
+    <!-- Global helpers: api(), requireAuth, showToast, showLoading, handleApiError, uploadImage, formatCurrency -->
+    <script src="js/app.js"></script>
+
+    <style>
+      .toast {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 60;
+        min-width: 220px;
+      }
+    </style>
+  </head>
+
+  <body
+    onload="requireAuth(); initPage(); loadComponents()"
+    class="bg-gray-100 min-h-screen"
+  >
+    <!-- NAVBAR PARTIAL -->
+    <div id="navbar"></div>
+    <script>
+      let navbarLoaded = false;
+
+      fetch("./partials/navbar.html")
+        .then((res) => res.text())
+        .then((html) => {
+          if (navbarLoaded) return;
+          navbarLoaded = true;
+
+          document.getElementById("navbar").innerHTML = html;
+
+          setTimeout(() => {
+            const mainWrapper = document.querySelector("main#page-content");
+            const pageContent = document.querySelector("#page-content-inner");
+
+            if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+              mainWrapper.appendChild(pageContent);
+              pageContent.style.display = "block";
+              pageContent.dataset.moved = "true";
+            }
+
+            // highlight Components link sa sidebar
+            const compLink = document.querySelector(
+              'a[href="components.html"]'
+            );
+            if (compLink) {
+              compLink.classList.add("bg-blue-600", "text-gray-900");
+              const label = compLink.querySelector(".font-medium");
+              if (label) label.classList.add("text-white");
+            }
+          }, 50);
+        })
+        .catch((err) => console.error("Navbar load failed:", err));
+    </script>
+
+    <!-- PAGE CONTENT (moved into <main#page-content> by script) -->
+    <div id="page-content-inner" style="display: none">
+      <div class="max-w-6xl mx-auto">
+        <div class="mb-6 flex items-center justify-between">
+          <h1 class="text-3xl font-bold text-gray-800">Components</h1>
+          <div>
+            <button
+              onclick="openAdd()"
+              class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
+            >
+              ＋ Add Component
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <section class="bg-white rounded-lg shadow p-4 mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label for="filterType" class="block text-xs text-gray-600 mb-1"
+                >Type</label
+              >
+              <select
+                id="filterType"
+                onchange="applyFilters()"
+                class="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Types</option>
+                <option>CPU</option>
+                <option>GPU</option>
+                <option>MOBO</option>
+                <option>RAM</option>
+                <option>Storage</option>
+                <option>PSU</option>
+                <option>Case</option>
+                <option>Cooling</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="filterBrand" class="block text-xs text-gray-600 mb-1"
+                >Brand</label
+              >
+              <select
+                id="filterBrand"
+                onchange="applyFilters()"
+                class="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Brands</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="filterStock" class="block text-xs text-gray-600 mb-1"
+                >Stock</label
+              >
+              <select
+                id="filterStock"
+                onchange="applyFilters()"
+                class="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All</option>
+                <option value="in_stock">In Stock</option>
+                <option value="low_stock">Low Stock</option>
+                <option value="out_of_stock">Out of Stock</option>
+              </select>
+            </div>
+
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block text-xs text-gray-600 mb-1"
+                  >Min Price</label
+                >
+                <input
+                  id="priceMin"
+                  type="number"
+                  onchange="applyFilters()"
+                  class="w-full border rounded px-3 py-2 text-sm"
+                  placeholder="0"
+                />
+              </div>
+              <div class="flex-1">
+                <label class="block text-xs text-gray-600 mb-1"
+                  >Max Price</label
+                >
+                <input
+                  id="priceMax"
+                  type="number"
+                  onchange="applyFilters()"
+                  class="w-full border rounded px-3 py-2 text-sm"
+                  placeholder="Any"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Search</label>
+              <input
+                id="searchInput"
+                type="text"
+                onkeyup="applyFilters()"
+                class="w-full border rounded px-3 py-2 text-sm"
+                placeholder="brand or model..."
+              />
+            </div>
+          </div>
+        </section>
+
+        <!-- Table -->
+        <section class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-gray-50 border-b">
+                <tr>
+                  <th class="p-3 text-left text-xs text-gray-600">Image</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Type</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Brand</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Model</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Price</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Stock</th>
+                  <th class="p-3 text-left text-xs text-gray-600">LowThresh</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Status</th>
+                  <th class="p-3 text-left text-xs text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="componentsTable" class="divide-y">
+                <tr>
+                  <td colspan="9" class="p-8 text-center text-gray-500">
+                    Loading...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div
+            class="bg-gray-50 px-4 py-3 flex items-center justify-between border-t"
+          >
+            <div class="text-sm text-gray-700">
+              Showing <span id="pageStart">0</span> to
+              <span id="pageEnd">0</span> of <span id="totalItems">0</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                id="prevBtn"
+                onclick="changePage(-1)"
+                class="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                ◀ Prev
+              </button>
+              <div id="pageNumbers" class="flex gap-1"></div>
+              <button
+                id="nextBtn"
+                onclick="changePage(1)"
+                class="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                Next ▶
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- FOOTER (partial) -->
+    <div id="footer"></div>
+    <script>
+      fetch("./partials/footer.html")
+        .then((r) => r.text())
+        .then((html) => {
+          document.getElementById("footer").innerHTML = html;
+        })
+        .catch(() => {});
+    </script>
+
+    <!-- MODAL: Add / Edit (scrollable) -->
+    <div
+      id="componentModal"
+      class="hidden fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 my-10 max-h-[90vh] overflow-y-auto"
+      >
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 id="modalTitle" class="text-2xl font-semibold">
+              Add Component
+            </h2>
+            <button onclick="closeModal()" class="text-xl text-gray-600">
+              ×
+            </button>
+          </div>
+
+          <form
+            id="componentForm"
+            onsubmit="saveComponent(event)"
+            class="space-y-4"
+          >
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- TYPE DROPDOWN -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Type *</label
+                >
+                <select
+                  id="type"
+                  required
+                  class="w-full border rounded px-3 py-2"
+                >
+                  <option value="">Select Type</option>
+                  <option value="CPU">CPU</option>
+                  <option value="GPU">GPU</option>
+                  <option value="MOBO">MOBO</option>
+                  <option value="RAM">RAM</option>
+                  <option value="Storage">Storage</option>
+                  <option value="PSU">PSU</option>
+                  <option value="Case">Case</option>
+                  <option value="Cooling">Cooling</option>
+                </select>
+              </div>
+
+              <!-- BRAND DROPDOWN -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Brand *</label
+                >
+                <select
+                  id="brand"
+                  required
+                  class="w-full border rounded px-3 py-2"
+                >
+                  <option value="">Select Brand</option>
+                </select>
+              </div>
+
+              <!-- MODEL DROPDOWN -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Model *</label
+                >
+                <select
+                  id="model"
+                  required
+                  class="w-full border rounded px-3 py-2"
+                >
+                  <option value="">Select Model</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Price *</label
+                >
+                <input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  class="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <!-- VENDOR DROPDOWN -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Vendor</label
+                >
+                <select id="vendor" class="w-full border rounded px-3 py-2">
+                  <option value="">Select Vendor</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Stock Qty *</label
+                >
+                <input
+                  id="stock"
+                  type="number"
+                  min="0"
+                  required
+                  class="w-full border rounded px-3 py-2"
+                  placeholder="0"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Low Stock Threshold</label
+                >
+                <input
+                  id="lowStockThreshold"
+                  type="number"
+                  min="0"
+                  value="5"
+                  class="w-full border rounded px-3 py-2"
+                  placeholder="5"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700"
+                  >Status</label
+                >
+                <select id="status" class="w-full border rounded px-3 py-2">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Image -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >Image</label
+              >
+              <div class="flex items-start gap-4">
+                <input
+                  id="imageInput"
+                  type="file"
+                  accept="image/*"
+                  onchange="previewImage(event)"
+                  class="border rounded px-3 py-2"
+                />
+                <div id="imagePreview" class="hidden">
+                  <img
+                    id="previewImg"
+                    class="w-24 h-24 object-cover rounded border"
+                  />
+                </div>
+                <div id="currentImage" class="hidden">
+                  <img
+                    id="currentImg"
+                    class="w-24 h-24 object-cover rounded border"
+                  />
+                  <button
+                    type="button"
+                    onclick="removeImage()"
+                    class="text-xs text-red-600 mt-2"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Specs DROPDOWNS -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >Specifications</label
+              >
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <select
+                  id="specSocket"
+                  class="border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Socket</option>
+                  <option value="AM4">AM4</option>
+                  <option value="AM5">AM5</option>
+                  <option value="LGA 1200">LGA 1200</option>
+                  <option value="LGA 1700">LGA 1700</option>
+                </select>
+
+                <select
+                  id="specChipset"
+                  class="border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Chipset</option>
+                  <option value="B550">B550</option>
+                  <option value="X570">X570</option>
+                  <option value="Z690">Z690</option>
+                  <option value="Z790">Z790</option>
+                </select>
+
+                <select id="specDDR" class="border rounded px-3 py-2 text-sm">
+                  <option value="">DDR</option>
+                  <option value="DDR3">DDR3</option>
+                  <option value="DDR4">DDR4</option>
+                  <option value="DDR5">DDR5</option>
+                </select>
+
+                <select id="specVRAM" class="border rounded px-3 py-2 text-sm">
+                  <option value="">VRAM (GB)</option>
+                  <option value="4">4</option>
+                  <option value="6">6</option>
+                  <option value="8">8</option>
+                  <option value="12">12</option>
+                  <option value="16">16</option>
+                </select>
+
+                <select id="specTDP" class="border rounded px-3 py-2 text-sm">
+                  <option value="">TDP (W)</option>
+                  <option value="65">65</option>
+                  <option value="95">95</option>
+                  <option value="125">125</option>
+                  <option value="250">250</option>
+                </select>
+
+                <select
+                  id="specLength"
+                  class="border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Length (mm)</option>
+                  <option value="170">170</option>
+                  <option value="200">200</option>
+                  <option value="250">250</option>
+                  <option value="300">300</option>
+                </select>
+
+                <select
+                  id="specFormFactor"
+                  class="border rounded px-3 py-2 text-sm md:col-span-2"
+                >
+                  <option value="">Form Factor</option>
+                  <option value="ATX">ATX</option>
+                  <option value="Micro-ATX">Micro-ATX</option>
+                  <option value="Mini-ITX">Mini-ITX</option>
+                  <option value="E-ATX">E-ATX</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onclick="closeModal()"
+                class="px-5 py-2 border rounded"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="px-5 py-2 bg-blue-600 text-white rounded"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST ROOT -->
+    <div id="toastRoot" class="toast"></div>
+
+    <!-- PAGE LOGIC -->
+    <script>
+      let allComponents = [];
+      let filteredComponents = [];
+      let currentPage = 1;
+      const itemsPerPage = 10;
+      let editID = null;
+      let currentImageUrl = null;
+
+      // Helper: ensure value exists in <select>, then select it
+      function selectOrAddOption(selectEl, value) {
+        if (!selectEl || !value) return;
+        const exists = Array.from(selectEl.options).some(
+          (o) => o.value === value
+        );
+        if (!exists) {
+          const opt = document.createElement("option");
+          opt.value = value;
+          opt.textContent = value;
+          selectEl.appendChild(opt);
+        }
+        selectEl.value = value;
+      }
+
+      function initPage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get("edit");
+        const search = urlParams.get("search");
+        const filter = urlParams.get("filter");
+
+        if (search) document.getElementById("searchInput").value = search;
+        if (filter === "low_stock")
+          document.getElementById("filterStock").value = "low_stock";
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") closeModal();
+        });
+
+        if (editId) {
+          setTimeout(() => editItem(editId), 300);
+        }
+      }
+
+      async function loadComponents() {
+        const table = document.getElementById("componentsTable");
+        try {
+          showLoading(table);
+
+          const params = new URLSearchParams({
+            page: 1,
+            limit: 1000,
+            sort: "created_at",
+            order: "desc",
+          });
+
+          const res = await api().get(`/componentsadmin?${params.toString()}`);
+          const data = res.data;
+          allComponents = Array.isArray(data)
+            ? data
+            : data?.data || data?.components || [];
+
+          populateBrandOptions();
+          populateFormDropdowns();
+          applyFilters();
+        } catch (err) {
+          table.innerHTML =
+            '<tr><td colspan="9" class="p-8 text-center text-red-500">Failed to load components</td></tr>';
+          handleApiError(err);
+        }
+      }
+
+      function populateBrandOptions() {
+        const brands = [
+          ...new Set(allComponents.map((c) => c.brand).filter(Boolean)),
+        ].sort();
+
+        // Filter dropdown
+        const brandFilter = document.getElementById("filterBrand");
+        brandFilter.innerHTML =
+          '<option value="">All Brands</option>' +
+          brands.map((b) => `<option value="${b}">${b}</option>`).join("");
+
+        // Modal Brand dropdown
+        const brandSelect = document.getElementById("brand");
+        brandSelect.innerHTML =
+          '<option value="">Select Brand</option>' +
+          brands.map((b) => `<option value="${b}">${b}</option>`).join("");
+      }
+
+      function populateFormDropdowns() {
+        const modelSelect = document.getElementById("model");
+        const vendorSelect = document.getElementById("vendor");
+
+        const models = [
+          ...new Set(
+            allComponents
+              .map((c) => (c.name || c.model || "").trim())
+              .filter(Boolean)
+          ),
+        ].sort();
+        const vendors = [
+          ...new Set(
+            allComponents.map((c) => (c.vendor || "").trim()).filter(Boolean)
+          ),
+        ].sort();
+
+        modelSelect.innerHTML =
+          '<option value="">Select Model</option>' +
+          models.map((m) => `<option value="${m}">${m}</option>`).join("");
+
+        vendorSelect.innerHTML =
+          '<option value="">Select Vendor</option>' +
+          vendors.map((v) => `<option value="${v}">${v}</option>`).join("");
+      }
+
+      function applyFilters() {
+        const typeFilter = document.getElementById("filterType").value;
+        const brandFilter = document.getElementById("filterBrand").value;
+        const stockFilter = document.getElementById("filterStock").value;
+        const priceMin =
+          parseFloat(document.getElementById("priceMin").value) || 0;
+        const priceMax =
+          parseFloat(document.getElementById("priceMax").value) || Infinity;
+        const search = document
+          .getElementById("searchInput")
+          .value.toLowerCase();
+
+        filteredComponents = allComponents.filter((c) => {
+          const matchType =
+            !typeFilter || (c.category_id || "").toString() === typeFilter;
+          const matchBrand = !brandFilter || (c.brand || "") === brandFilter;
+          const matchSearch =
+            !search ||
+            (c.brand || "").toLowerCase().includes(search) ||
+            (c.name || c.model || "").toLowerCase().includes(search);
+
+          const price = parseFloat(c.price) || 0;
+          const matchPrice = price >= priceMin && price <= priceMax;
+
+          let matchStock = true;
+          const stock = parseInt(c.stock) || 0;
+          const threshold =
+            parseInt(c.low_stock_threshold ?? c.lowStockThreshold ?? 5) || 5;
+
+          if (stockFilter === "in_stock") matchStock = stock > threshold;
+          else if (stockFilter === "low_stock")
+            matchStock = stock > 0 && stock <= threshold;
+          else if (stockFilter === "out_of_stock") matchStock = stock === 0;
+
+          return (
+            matchType && matchBrand && matchSearch && matchPrice && matchStock
+          );
+        });
+
+        currentPage = 1;
+        renderTable();
+      }
+
+      function renderTable() {
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pageData = filteredComponents.slice(start, end);
+        const table = document.getElementById("componentsTable");
+
+        if (!pageData.length) {
+          table.innerHTML =
+            '<tr><td colspan="9" class="p-8 text-center text-gray-500">No components found</td></tr>';
+          document.getElementById("pageStart").textContent = 0;
+          document.getElementById("pageEnd").textContent = 0;
+          document.getElementById("totalItems").textContent =
+            filteredComponents.length;
+          document.getElementById("pageNumbers").innerHTML = "";
+          document.getElementById("prevBtn").disabled = true;
+          document.getElementById("nextBtn").disabled = true;
+          return;
+        }
+
+        const rows = pageData
+          .map((c) => {
+            const stock = parseInt(c.stock) || 0;
+            const threshold =
+              parseInt(c.low_stock_threshold ?? c.lowStockThreshold ?? 5) || 5;
+            const lowStockClass =
+              stock <= threshold ? "text-red-600 font-semibold" : "";
+
+            const hasValidImage =
+              c.image_url &&
+              typeof c.image_url === "string" &&
+              c.image_url.trim() !== "" &&
+              !/^\d+$/.test(c.image_url.trim());
+
+            const imageCell = hasValidImage
+              ? `<img src="${c.image_url}" alt="img" class="w-12 h-12 object-cover rounded">`
+              : `<div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">No Img</div>`;
+
+            const status = (c.status || "active").toLowerCase();
+            const statusLabel = status.toUpperCase();
+            const statusClass =
+              status === "active"
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-200 text-gray-600";
+
+            return `
+          <tr class="hover:bg-gray-50">
+            <td class="p-3">
+              ${imageCell}
+            </td>
+            <td class="p-3 text-sm">${c.category_id || "N/A"}</td>
+            <td class="p-3 text-sm font-medium">${c.brand || "N/A"}</td>
+            <td class="p-3 text-sm">${c.name || c.model || "N/A"}</td>
+            <td class="p-3 text-sm font-semibold">${formatCurrency(
+              c.price ?? 0
+            )}</td>
+            <td class="p-3 text-sm ${lowStockClass}">${stock}</td>
+            <td class="p-3 text-sm text-gray-500">${threshold}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded text-xs ${statusClass}">
+                ${statusLabel}
+              </span>
+            </td>
+            <td class="p-3">
+              <div class="flex gap-2">
+                <button onclick="editItem('${
+                  c.id
+                }')" class="text-blue-600 hover:underline text-xs">Edit</button>
+                <button onclick="toggleStatus('${
+                  c.id
+                }','${status}')" class="text-orange-600 hover:underline text-xs">
+                  ${status === "active" ? "Deactivate" : "Activate"}
+                </button>
+                <button onclick="deleteItem('${
+                  c.id
+                }')" class="text-red-600 hover:underline text-xs">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `;
+          })
+          .join("");
+
+        table.innerHTML = rows;
+
+        document.getElementById("pageStart").textContent = start + 1;
+        document.getElementById("pageEnd").textContent = Math.min(
+          end,
+          filteredComponents.length
+        );
+        document.getElementById("totalItems").textContent =
+          filteredComponents.length;
+
+        const totalPages = Math.ceil(filteredComponents.length / itemsPerPage);
+        const pageNumbers = [];
+        for (let i = 1; i <= totalPages; i++) {
+          if (
+            i === 1 ||
+            i === totalPages ||
+            (i >= currentPage - 1 && i <= currentPage + 1)
+          ) {
+            pageNumbers.push(`
+            <button
+              onclick="goToPage(${i})"
+              class="px-3 py-1 rounded ${
+                i === currentPage
+                  ? "bg-blue-600 text-white"
+                  : "border hover:bg-gray-100"
+              }"
+            >
+              ${i}
+            </button>
+          `);
+          } else if (i === currentPage - 2 || i === currentPage + 2) {
+            pageNumbers.push(`<span class="px-2">...</span>`);
+          }
+        }
+        document.getElementById("pageNumbers").innerHTML = pageNumbers.join("");
+
+        document.getElementById("prevBtn").disabled = currentPage === 1;
+        document.getElementById("nextBtn").disabled = currentPage >= totalPages;
+      }
+
+      function changePage(dir) {
+        const totalPages =
+          Math.ceil(filteredComponents.length / itemsPerPage) || 1;
+        const next = currentPage + dir;
+        if (next >= 1 && next <= totalPages) {
+          currentPage = next;
+          renderTable();
+        }
+      }
+
+      function goToPage(p) {
+        currentPage = p;
+        renderTable();
+      }
+
+      function openAdd() {
+        editID = null;
+        currentImageUrl = null;
+        document.getElementById("componentForm").reset();
+
+        // reset selects to default
+        document.getElementById("type").value = "";
+        document.getElementById("brand").value = "";
+        document.getElementById("model").value = "";
+        document.getElementById("vendor").value = "";
+        document.getElementById("specSocket").value = "";
+        document.getElementById("specChipset").value = "";
+        document.getElementById("specDDR").value = "";
+        document.getElementById("specVRAM").value = "";
+        document.getElementById("specTDP").value = "";
+        document.getElementById("specLength").value = "";
+        document.getElementById("specFormFactor").value = "";
+
+        document.getElementById("currentImage").classList.add("hidden");
+        document.getElementById("imagePreview").classList.add("hidden");
+        document.getElementById("modalTitle").textContent = "Add Component";
+        document.getElementById("componentModal").classList.remove("hidden");
+      }
+
+      async function editItem(id) {
+        try {
+          editID = id;
+          const res = await api().get(`/componentsadmin/${id}`);
+          const c = res.data?.data || res.data;
+
+          const typeSelect = document.getElementById("type");
+          selectOrAddOption(typeSelect, c.category_id || "");
+
+          selectOrAddOption(document.getElementById("brand"), c.brand || "");
+          selectOrAddOption(
+            document.getElementById("model"),
+            c.name || c.model || ""
+          );
+          selectOrAddOption(document.getElementById("vendor"), c.vendor || "");
+
+          document.getElementById("price").value = c.price || "";
+          document.getElementById("stock").value = c.stock || 0;
+          document.getElementById("lowStockThreshold").value =
+            c.low_stock_threshold ?? c.lowStockThreshold ?? 5;
+          document.getElementById("status").value = c.status || "active";
+
+          let specs = {};
+          if (typeof c.specs === "object" && c.specs !== null) {
+            specs = c.specs;
+          } else if (typeof c.specs === "string" && c.specs.trim()) {
+            try {
+              specs = JSON.parse(c.specs);
+            } catch {
+              specs = {};
+            }
+          }
+
+          selectOrAddOption(
+            document.getElementById("specSocket"),
+            specs.socket || ""
+          );
+          selectOrAddOption(
+            document.getElementById("specChipset"),
+            specs.chipset || ""
+          );
+          selectOrAddOption(
+            document.getElementById("specDDR"),
+            specs.ddr || ""
+          );
+          selectOrAddOption(
+            document.getElementById("specVRAM"),
+            specs.vramGb != null ? String(specs.vramGb) : ""
+          );
+          selectOrAddOption(
+            document.getElementById("specTDP"),
+            specs.tdp != null ? String(specs.tdp) : ""
+          );
+          selectOrAddOption(
+            document.getElementById("specLength"),
+            specs.lengthMm != null ? String(specs.lengthMm) : ""
+          );
+          selectOrAddOption(
+            document.getElementById("specFormFactor"),
+            specs.formFactor || ""
+          );
+
+          if (c.image_url) {
+            currentImageUrl = c.image_url;
+            document.getElementById("currentImg").src = c.image_url;
+            document.getElementById("currentImage").classList.remove("hidden");
+            document.getElementById("imagePreview").classList.add("hidden");
+          } else {
+            document.getElementById("currentImage").classList.add("hidden");
+          }
+
+          document.getElementById("modalTitle").textContent = "Edit Component";
+          document.getElementById("componentModal").classList.remove("hidden");
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
+
+      function previewImage(evt) {
+        const file = evt.target.files && evt.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById("previewImg").src = e.target.result;
+          document.getElementById("imagePreview").classList.remove("hidden");
+          document.getElementById("currentImage").classList.add("hidden");
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function removeImage() {
+        currentImageUrl = null;
+        document.getElementById("imageInput").value = "";
+        document.getElementById("currentImage").classList.add("hidden");
+      }
+
+      async function saveComponent(e) {
+        e.preventDefault();
+        try {
+          let image_url = currentImageUrl || null;
+          const imageFile = document.getElementById("imageInput").files[0];
+
+          if (imageFile) {
+            image_url = await uploadImage(imageFile, "components");
+          }
+
+          const specs = {
+            socket: document.getElementById("specSocket").value || null,
+            chipset: document.getElementById("specChipset").value || null,
+            ddr: document.getElementById("specDDR").value || null,
+            vramGb: document.getElementById("specVRAM").value || null,
+            tdp: document.getElementById("specTDP").value || null,
+            lengthMm: document.getElementById("specLength").value || null,
+            formFactor: document.getElementById("specFormFactor").value || null,
+          };
+
+          const payload = {
+            name: document.getElementById("model").value,
+            brand: document.getElementById("brand").value,
+            category_id: document.getElementById("type").value,
+            price: parseFloat(document.getElementById("price").value) || 0,
+            vendor: document.getElementById("vendor").value || null,
+            stock: parseInt(document.getElementById("stock").value) || 0,
+            low_stock_threshold:
+              parseInt(document.getElementById("lowStockThreshold").value) || 5,
+            status: document.getElementById("status").value || "active",
+            image_url,
+            specs,
+          };
+
+          if (editID) {
+            await api().put(`/componentsadmin/${editID}`, payload);
+            showToast("Component updated");
+          } else {
+            await api().post("/componentsadmin", payload);
+            showToast("Component added");
+          }
+
+          closeModal();
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
+
+      function closeModal() {
+        document.getElementById("componentModal").classList.add("hidden");
+        editID = null;
+        currentImageUrl = null;
+        document.getElementById("imageInput").value = "";
+      }
+
+      async function deleteItem(id) {
+        const confirmText = prompt(
+          "To permanently delete this component, type DELETE (all caps):"
+        );
+        if (confirmText !== "DELETE") {
+          alert("Delete cancelled.");
+          return;
+        }
+        try {
+          await api().delete(`/componentsadmin/${id}`);
+          showToast("Component deleted");
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
+
+      async function toggleStatus(id, currentStatus) {
+        try {
+          const normalized = (currentStatus || "active").toLowerCase();
+          const newStatus = normalized === "active" ? "inactive" : "active";
+
+          const actionLabel =
+            newStatus === "active" ? "activate" : "deactivate";
+          const ok = confirm(
+            `Are you sure you want to ${actionLabel} this component?`
+          );
+          if (!ok) return;
+
+          await api().put(`/componentsadmin/${id}`, { status: newStatus });
+          showToast(
+            `Component ${newStatus === "active" ? "activated" : "deactivated"}`
+          );
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
+    </script>
+  </body>
+</html>

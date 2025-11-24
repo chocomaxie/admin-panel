@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Axios -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <!-- Global JS -->
+  <script src="js/app.js"></script>
+</head>
+
+<body class="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+
+  <!-- LOGIN CARD -->
+  <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-sm">
+
+    <h1 class="text-2xl font-bold mb-6 text-center">Admin Login</h1>
+
+    <!-- Email -->
+    <label for="email" class="sr-only">Email</label>
+    <input 
+      id="email"
+      name="email"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+      onkeydown="handleEnter(event)"
+      class="w-full border rounded p-2 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-400"
+    >
+
+    <!-- Password -->
+    <label for="password" class="sr-only">Password</label>
+    <input
+      id="password"
+      name="password"
+      type="password"
+      placeholder="Password"
+      autocomplete="current-password"
+      onkeydown="handleEnter(event)"
+      class="w-full border rounded p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+    >
+
+    <!-- Button -->
+    <button 
+      id="loginBtn"
+      type="button"
+      onclick="login()"
+      class="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded transition cursor-pointer"
+      style="pointer-events: auto;"
+    >
+      Login
+    </button>
+
+    <!-- Error Message -->
+    <p id="error" class="hidden mt-4 text-red-600 text-center text-sm">
+      Invalid credentials. Please try again.
+    </p>
+
+  </div>
+
+  <script>
+    // Use API from app.js if available, otherwise define it
+    const API_URL = typeof API !== "undefined" ? API : "https://pc-component-picker-backend-production.up.railway.app/api";
+    
+    // Make functions globally accessible
+    window.handleEnter = function(e) {
+      if (e.key === "Enter") {
+        console.log("Enter key pressed");
+        window.login();
+      }
+    };
+
+    window.login = async function() {
+      console.log("Login function called");
+      const btn = document.getElementById("loginBtn");
+      const error = document.getElementById("error");
+
+      const email = document.getElementById("email").value.trim().toLowerCase();
+      const password = document.getElementById("password").value.trim();
+
+      // Validation
+      if (!email || !password) {
+        error.innerText = "Please enter your email and password.";
+        error.classList.remove("hidden");
+        return;
+      }
+
+      console.log("Attempting login for:", email);
+
+      // Loading state
+      btn.innerText = "Logging in...";
+      btn.disabled = true;
+      btn.style.cursor = "wait";
+      error.classList.add("hidden");
+
+      try {
+        // Try the endpoint - could be /auth/login or just /login depending on how routes are mounted
+        let loginEndpoint = `${API_URL}/auth/login`;
+        let res;
+        
+        try {
+          console.log("Trying endpoint:", loginEndpoint);
+          res = await axios.post(loginEndpoint, { email, password }, {
+            headers: { "Content-Type": "application/json" }
+          });
+        } catch (firstError) {
+          // If 404, try alternative endpoint
+          if (firstError.response?.status === 404) {
+            console.log("First endpoint failed, trying alternative:", `${API_URL}/login`);
+            loginEndpoint = `${API_URL}/login`;
+            res = await axios.post(loginEndpoint, { email, password }, {
+              headers: { "Content-Type": "application/json" }
+            });
+          } else {
+            throw firstError;
+          }
+        }
+
+        console.log("Login response:", res.data);
+
+        // Check response format from your backend
+        if (!res.data.success || !res.data.token) {
+          throw new Error(res.data.error || "Login failed");
+        }
+
+        // Save token and refresh token
+        localStorage.setItem("token", res.data.token);
+        if (res.data.refresh_token) {
+          localStorage.setItem("refresh_token", res.data.refresh_token);
+        }
+        
+        // Save user info if available
+        if (res.data.user) {
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+        }
+        
+        // Clear redirect flag
+        window.authRedirecting = false;
+
+        // Redirect to dashboard with small delay to prevent flickering
+        setTimeout(() => {
+          window.location.href = "./dashboard.html";
+        }, 200);
+      } 
+      catch (err) {
+        console.error("LOGIN ERROR:", err);
+        console.error("Error response:", err.response);
+        console.error("Error status:", err.response?.status);
+        console.error("Error data:", err.response?.data);
+        
+        // Check if it's a 404 (route not found)
+        if (err.response?.status === 404) {
+          error.innerText = "Login endpoint not found. Please check if the route is correct.";
+        } else if (err.response?.status === 400 || err.response?.status === 401) {
+          // Show specific error message from backend
+          const errorMsg = err.response?.data?.error || err.message || "Invalid credentials. Please try again.";
+          error.innerText = errorMsg;
+        } else {
+          error.innerText = err.response?.data?.error || err.message || "Login failed. Please try again.";
+        }
+        error.classList.remove("hidden");
+      } 
+      finally {
+        btn.innerText = "Login";
+        btn.disabled = false;
+        btn.style.cursor = "pointer";
+      }
+    };
+    
+    // Prevent redirect loop - only redirect if we have a valid token and we're not already redirecting
+    let isRedirecting = false;
+    document.addEventListener("DOMContentLoaded", () => {
+      console.log("Login page loaded");
+      const token = localStorage.getItem("token");
+      if (token && !isRedirecting) {
+        isRedirecting = true;
+        // Small delay to prevent flickering
+        setTimeout(() => {
+          window.location.href = "./dashboard.html";
+        }, 100);
+      }
+      
+      // Ensure button is clickable
+      const btn = document.getElementById("loginBtn");
+      if (btn) {
+        btn.disabled = false;
+        btn.style.pointerEvents = "auto";
+        btn.style.cursor = "pointer";
+        btn.style.opacity = "1";
+        btn.style.zIndex = "10";
+        
+        // Add event listener as backup
+        btn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log("Button clicked via event listener");
+          window.login();
+        });
+        
+        console.log("Login button ready");
+      }
+      
+      // Also add form submit handler
+      const form = document.querySelector("body");
+      if (form) {
+        form.addEventListener("submit", function(e) {
+          e.preventDefault();
+          window.login();
+        });
+      }
+    });
+  </script>
+
+</body>
+</html>

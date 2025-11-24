@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages - Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/app.js"></script>
+</head>
+
+<body onload="requireAuth(); initMessages()" class="bg-gray-50">
+
+  <!-- NAVBAR -->
+  <div id="navbar"></div>
+  <script>
+    let navbarLoaded = false;
+    
+    fetch("./partials/navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        if (navbarLoaded) return;
+        navbarLoaded = true;
+        
+        document.getElementById("navbar").innerHTML = html;
+        
+        setTimeout(() => {
+          const mainWrapper = document.querySelector("main#page-content");
+          const pageContent = document.querySelector("#page-content-inner");
+          
+          if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+            mainWrapper.appendChild(pageContent);
+            pageContent.style.display = 'block';
+            pageContent.dataset.moved = 'true';
+          }
+          
+          const link = document.querySelector('a[href="messages.html"]');
+          if (link) {
+            link.classList.add("bg-blue-600", "text-white");
+            link.classList.remove("hover:bg-gray-100", "text-gray-700");
+          }
+        }, 50);
+      })
+      .catch(err => console.error("Navbar load failed:", err));
+  </script>
+
+  <!-- PAGE CONTENT -->
+  <div id="page-content-inner" style="display: none;">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Messages</h1>
+      <p class="text-gray-600 mt-1">Manage customer support conversations</p>
+    </div>
+
+    <!-- Tabs and Filters Bar -->
+    <div class="bg-white rounded-lg shadow mb-4">
+      <!-- Tabs -->
+      <div class="border-b border-gray-200">
+        <div class="flex gap-1 p-2">
+          <button onclick="setTab('all')" id="tabAll" class="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white">
+            All Messages
+          </button>
+          <button onclick="setTab('open')" id="tabOpen" class="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100">
+            Open
+          </button>
+          <button onclick="setTab('closed')" id="tabClosed" class="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100">
+            Closed
+          </button>
+          <button onclick="setTab('unread')" id="tabUnread" class="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-100">
+            Unread
+          </button>
+        </div>
+      </div>
+
+      <!-- Search and Actions -->
+      <div class="p-4 flex gap-3 items-center">
+        <div class="flex-1">
+          <label for="threadSearch" class="sr-only">Search Threads</label>
+          <input 
+            type="text" 
+            id="threadSearch" 
+            name="threadSearch" 
+            placeholder="Search by name, subject, or email…" 
+            onkeyup="loadThreads()" 
+            class="w-full border rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+        </div>
+        <button onclick="exportMessages()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
+          Export CSV
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Left: Thread List -->
+      <div class="lg:col-span-1 bg-white rounded-lg shadow">
+        <!-- Thread List -->
+        <div id="threadList" class="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+          <div class="p-4 text-center text-gray-500">Loading threads...</div>
+        </div>
+      </div>
+
+      <!-- Right: Conversation -->
+      <div class="lg:col-span-2 bg-white rounded-lg shadow">
+        <div id="noThreadSelected" class="p-8 text-center text-gray-500">
+          <div class="text-4xl mb-4">💬</div>
+          <p>Select a thread to view conversation</p>
+        </div>
+
+        <div id="conversationView" class="hidden flex flex-col h-[600px]">
+          <!-- Thread Header -->
+          <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 id="threadSubject" class="font-bold text-gray-800"></h2>
+              <div class="text-sm text-gray-500 mt-1">
+                <span id="threadUser"></span> • <span id="threadStatus"></span>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button id="closeThreadBtn" onclick="closeThread()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm">Close Thread</button>
+            </div>
+          </div>
+
+          <!-- Messages -->
+          <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+            <!-- Messages will be loaded here -->
+          </div>
+
+          <!-- Input Box -->
+          <div class="p-4 border-t border-gray-200">
+            <div class="flex gap-2">
+              <label for="messageInput" class="sr-only">Type your message</label>
+              <input 
+                type="text" 
+                id="messageInput"
+                name="messageInput"
+                placeholder="Type your message…" 
+                onkeydown="if(event.key === 'Enter') sendMessage()"
+                class="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+              <button onclick="sendMessage()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer"></div>
+  <script>
+    fetch("./partials/footer.html")
+      .then(res => res.text())
+      .then(html => document.getElementById("footer").innerHTML = html)
+      .catch(err => console.error("Footer load failed:", err));
+  </script>
+
+  <script>
+    let threads = [];
+    let currentThreadId = null;
+    let messageInterval = null;
+    let currentTab = 'all';
+
+    function initMessages() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const threadId = urlParams.get("thread");
+      if (threadId) {
+        setTimeout(() => openThread(threadId), 500);
+      }
+      loadThreads();
+    }
+
+    function setTab(tab) {
+      currentTab = tab;
+      
+      // Update tab styles
+      ['tabAll', 'tabOpen', 'tabClosed', 'tabUnread'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (id === 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1) || (tab === 'all' && id === 'tabAll')) {
+            el.classList.add('bg-blue-600', 'text-white');
+            el.classList.remove('text-gray-700', 'hover:bg-gray-100');
+          } else {
+            el.classList.remove('bg-blue-600', 'text-white');
+            el.classList.add('text-gray-700', 'hover:bg-gray-100');
+          }
+        }
+      });
+      
+      loadThreads();
+    }
+
+    function exportMessages() {
+      const headers = ["From", "Subject", "Status", "Date"];
+      const rows = threads.map(t => [
+        t.from || t.user_name || t.userName || "",
+        t.subject || "",
+        t.status || "",
+        new Date(t.created_at || t.updated_at || "").toLocaleDateString()
+      ]);
+
+      const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `messages_${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      showToast("Messages exported");
+    }
+
+    async function loadThreads() {
+      try {
+        const search = document.getElementById("threadSearch").value.toLowerCase();
+
+        showLoading(document.getElementById("threadList"));
+
+        // Call messages endpoint
+        const params = new URLSearchParams({
+          page: 1,
+          limit: 100,
+          sort: 'updated_at',
+          order: 'desc'
+        });
+
+        if (currentTab !== 'all' && currentTab !== 'unread') {
+          params.append('status', currentTab);
+        }
+
+        const res = await api().get(`/messages?${params}`);
+        
+        // Expected response: { success: true, data: [...], pagination: {...} }
+        threads = res.data?.data || [];
+
+        // Apply tab filter for unread
+        let filtered = threads;
+        if (currentTab === 'unread') {
+          filtered = filtered.filter(t => t.unread || t.is_unread);
+        }
+
+        // Apply search filter
+        if (search) {
+          filtered = filtered.filter(t => 
+            (t.subject || "").toLowerCase().includes(search) ||
+            (t.from || t.user_name || t.userName || "").toLowerCase().includes(search) ||
+            (t.email || "").toLowerCase().includes(search)
+          );
+        }
+
+        // Sort by last message or created date
+        filtered.sort((a, b) => {
+          const dateA = new Date(a.last_message_at || a.updated_at || a.created_at || 0);
+          const dateB = new Date(b.last_message_at || b.updated_at || b.created_at || 0);
+          return dateB - dateA;
+        });
+
+        renderThreadList(filtered);
+      } catch (error) {
+        console.error("Failed to load threads:", error);
+        handleApiError(error);
+        document.getElementById("threadList").innerHTML = 
+          '<div class="p-4 text-center text-red-500">Failed to load threads</div>';
+      }
+    }
+
+    function renderThreadList(threadsList) {
+      if (threadsList.length === 0) {
+        document.getElementById("threadList").innerHTML = 
+          '<div class="p-4 text-center text-gray-500">No threads found</div>';
+        return;
+      }
+
+      document.getElementById("threadList").innerHTML = threadsList.map(thread => {
+        const isActive = (thread.id || thread._id) === currentThreadId;
+        const userName = thread.from || thread.user_name || thread.userName || "User";
+        const subject = thread.subject || "Support Request";
+        const status = thread.status || "closed";
+        const lastDate = thread.last_message_at || thread.updated_at || thread.created_at;
+        
+        return `
+          <div 
+            onclick="openThread('${thread.id || thread._id}')" 
+            class="p-4 cursor-pointer hover:bg-gray-50 transition ${isActive ? "bg-blue-50 border-l-4 border-blue-600" : ""}"
+          >
+            <div class="flex items-start justify-between mb-1">
+              <div class="font-semibold text-sm text-gray-800">${userName}</div>
+              <span class="px-2 py-1 rounded text-xs ${
+                status === "open" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
+              }">${status.toUpperCase()}</span>
+            </div>
+            <div class="text-sm text-gray-600 mb-1">${subject}</div>
+            <div class="text-xs text-gray-400">${getTimeAgo(lastDate)}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function openThread(threadId) {
+      try {
+        currentThreadId = threadId;
+        
+        // Get thread details
+        const threadRes = await api().get(`/messages/${threadId}`);
+        const thread = threadRes.data?.data || threadRes.data;
+
+        document.getElementById("noThreadSelected").classList.add("hidden");
+        document.getElementById("conversationView").classList.remove("hidden");
+        
+        document.getElementById("threadSubject").textContent = thread.subject || "Support Thread";
+        document.getElementById("threadUser").textContent = thread.from || thread.user_name || thread.userName || "User";
+        document.getElementById("threadStatus").textContent = `Status: ${(thread.status || "closed").toUpperCase()}`;
+        
+        document.getElementById("closeThreadBtn").style.display = thread.status === "open" ? "block" : "none";
+
+        await loadMessages(threadId);
+        
+        // Auto-refresh messages every 5 seconds
+        if (messageInterval) clearInterval(messageInterval);
+        messageInterval = setInterval(() => loadMessages(threadId), 5000);
+
+        loadThreads(); // Refresh to highlight active thread
+      } catch (error) {
+        console.error("Failed to open thread:", error);
+        handleApiError(error);
+      }
+    }
+
+    async function loadMessages(threadId) {
+      try {
+        // Get messages for this thread
+        const res = await api().get(`/messages/${threadId}/replies`);
+        const messages = res.data?.data || [];
+
+        const container = document.getElementById("messagesContainer");
+        
+        if (messages.length === 0) {
+          container.innerHTML = '<div class="text-center text-gray-500">No messages yet</div>';
+          return;
+        }
+
+        container.innerHTML = messages.map(msg => {
+          const isAdmin = msg.from === "admin" || msg.role === "admin" || msg.is_admin;
+          const senderName = isAdmin ? "You" : (msg.from || msg.user_name || "User");
+          const messageText = msg.message || msg.text || msg.content || "";
+          const messageDate = msg.created_at || msg.date;
+          
+          return `
+            <div class="flex ${isAdmin ? "justify-end" : "justify-start"}">
+              <div class="max-w-[70%] ${isAdmin ? "bg-blue-600 text-white" : "bg-white border"} rounded-lg p-3">
+                <div class="text-sm font-medium mb-1">${senderName}</div>
+                <div class="text-sm">${messageText}</div>
+                <div class="text-xs ${isAdmin ? "text-blue-100" : "text-gray-400"} mt-1">
+                  ${getTimeAgo(messageDate)}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
+      } catch (error) {
+        console.error("Failed to load messages:", error);
+      }
+    }
+
+    async function sendMessage() {
+      if (!currentThreadId) return;
+
+      const input = document.getElementById("messageInput");
+      const message = input.value.trim();
+      if (!message) return;
+
+      try {
+        // Send message reply
+        await api().post(`/messages/${currentThreadId}/reply`, {
+          message: message,
+          from: "admin",
+          role: "admin",
+          is_admin: true
+        });
+
+        input.value = "";
+        await loadMessages(currentThreadId);
+        await loadThreads();
+        showToast("Message sent");
+      } catch (error) {
+        console.error("Failed to send message:", error);
+        handleApiError(error);
+      }
+    }
+
+    async function closeThread() {
+      if (!currentThreadId) return;
+      
+      if (confirm("Close this thread?")) {
+        try {
+          await api().put(`/messages/${currentThreadId}`, { status: "closed" });
+          
+          showToast("Thread closed");
+          currentThreadId = null;
+          document.getElementById("noThreadSelected").classList.remove("hidden");
+          document.getElementById("conversationView").classList.add("hidden");
+          if (messageInterval) clearInterval(messageInterval);
+          loadThreads();
+        } catch (error) {
+          console.error("Failed to close thread:", error);
+          handleApiError(error);
+        }
+      }
+    }
+
+    function getTimeAgo(dateString) {
+      if (!dateString) return "Unknown";
+      const date = new Date(dateString);
+      const now = new Date();
+      const seconds = Math.floor((now - date) / 1000);
+      
+      if (seconds < 60) return "Just now";
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+      if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+      return date.toLocaleDateString();
+    }
+  </script>
+
+</body>
+</html>

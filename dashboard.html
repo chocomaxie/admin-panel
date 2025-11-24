@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/app.js"></script>
+  <style>
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.5s ease-out; }
+  </style>
+</head>
+
+<body onload="requireAuth(); loadDashboard()" class="bg-gray-50">
+
+  <!-- NAVBAR -->
+  <div id="navbar"></div>
+  <script>
+    let navbarLoaded = false;
+    
+    fetch("./partials/navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        if (navbarLoaded) return;
+        navbarLoaded = true;
+        
+        document.getElementById("navbar").innerHTML = html;
+
+        setTimeout(() => {
+          const mainWrapper = document.querySelector("main#page-content");
+          const pageContent = document.querySelector("#page-content-inner");
+          
+          if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+            mainWrapper.appendChild(pageContent);
+            pageContent.style.display = 'block';
+            pageContent.dataset.moved = 'true';
+          }
+
+          const dashboardLink = document.querySelector('a[href="dashboard.html"]');
+          if (dashboardLink) {
+            dashboardLink.classList.add("bg-blue-600", "text-white");
+            dashboardLink.classList.remove("hover:bg-gray-100", "text-gray-700");
+          }
+        }, 50);
+      })
+      .catch(err => console.error("Navbar load failed:", err));
+  </script>
+
+  <!-- PAGE CONTENT (will be moved into navbar's <main>) -->
+  <div id="page-content-inner" class="fade-in" style="display: none;">
+    
+    <!-- Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Dashboard</h1>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <!-- Revenue Card -->
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-gray-600">Revenue</h3>
+          <span class="text-2xl">💰</span>
+        </div>
+        <div class="space-y-1">
+          <div class="text-2xl font-bold text-gray-800" id="revenueToday">₱0</div>
+          <div class="flex text-xs text-gray-500 space-x-3">
+            <span>7d: <span id="revenue7d" class="font-semibold">₱0</span></span>
+            <span>30d: <span id="revenue30d" class="font-semibold">₱0</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orders Card -->
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-gray-600">Orders</h3>
+          <span class="text-2xl">🛒</span>
+        </div>
+        <div class="space-y-1">
+          <div class="text-2xl font-bold text-gray-800" id="ordersToday">0</div>
+          <div class="flex text-xs text-gray-500 space-x-3">
+            <span>7d: <span id="orders7d" class="font-semibold">0</span></span>
+            <span>30d: <span id="orders30d" class="font-semibold">0</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Low Stock Card -->
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-gray-600">Low-Stock Count</h3>
+          <span class="text-2xl">⚠️</span>
+        </div>
+        <div class="space-y-1">
+          <div class="text-2xl font-bold text-gray-800" id="lowStockCount">0</div>
+          <div class="text-xs text-gray-500">Items need restock</div>
+        </div>
+      </div>
+
+      <!-- Total Users Card -->
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-gray-600">Total Users</h3>
+          <span class="text-2xl">👥</span>
+        </div>
+        <div class="space-y-1">
+          <div class="text-2xl font-bold text-gray-800" id="totalUsers">0</div>
+          <div class="text-xs text-gray-500">Registered users</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <!-- Sales Over Time -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Sales Over Time</h2>
+        <div style="height: 300px; position: relative;">
+          <canvas id="salesChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Top Components -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Top Components</h2>
+        <div style="height: 300px; position: relative;">
+          <canvas id="topComponentsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panels Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+      <!-- Latest Orders -->
+      <div class="bg-white rounded-lg shadow p-6 lg:col-span-1">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-800">Latest Orders</h2>
+          <a href="orders.html" class="text-sm text-blue-600 hover:underline">View All</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">OrderID</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">User</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Total</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Status</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Date</th>
+              </tr>
+            </thead>
+            <tbody id="latestOrdersTable" class="divide-y divide-gray-200">
+              <tr><td colspan="5" class="p-4 text-center text-gray-500 text-sm">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Low Stock Table -->
+      <div class="bg-white rounded-lg shadow p-6 lg:col-span-1">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-800">Low Stock</h2>
+          <a href="components.html?filter=low_stock" class="text-sm text-blue-600 hover:underline">View All</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Component</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Stock</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Action</th>
+              </tr>
+            </thead>
+            <tbody id="lowStockTable" class="divide-y divide-gray-200">
+              <tr><td colspan="3" class="p-4 text-center text-gray-500 text-sm">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      
+
+      <!-- Top Customers -->
+      <div class="bg-white rounded-lg shadow p-6 lg:col-span-1">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-800">Top Customers</h2>
+          <a href="users.html" class="text-sm text-blue-600 hover:underline">View Users</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Customer</th>
+                <th class="p-2 text-center text-xs font-medium text-gray-600">Orders</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Total Spent</th>
+              </tr>
+            </thead>
+            <tbody id="topCustomersTable" class="divide-y divide-gray-200">
+              <tr><td colspan="3" class="p-4 text-center text-gray-500 text-sm">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer"></div>
+  <script>
+    fetch("./partials/footer.html")
+      .then(res => res.text())
+      .then(html => document.getElementById("footer").innerHTML = html)
+      .catch(err => console.error("Footer load failed:", err));
+  </script>
+
+  <script>
+    let salesChart = null;
+    let topComponentsChart = null;
+
+    // ---------- HELPERS (safe parsing) ----------
+
+    function normalizeOrdersResponse(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+
+      // handles: {data: [...]}, {orders: [...]}, {rows: [...]}, {success:true, orders:[...]}
+      if (Array.isArray(raw.data)) return raw.data;
+      if (Array.isArray(raw.orders)) return raw.orders;
+      if (Array.isArray(raw.rows)) return raw.rows;
+
+      // nested data
+      if (raw.data && typeof raw.data === "object") return normalizeOrdersResponse(raw.data);
+
+      return [];
+    }
+
+    function normalizeComponentsResponse(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      if (Array.isArray(raw.data)) return raw.data;
+      if (Array.isArray(raw.components)) return raw.components;
+      if (Array.isArray(raw.rows)) return raw.rows;
+      if (raw.data && typeof raw.data === "object") return normalizeComponentsResponse(raw.data);
+      return [];
+    }
+
+    // same logic as components.html "low_stock" filter: stock > 0 && stock <= threshold
+    function getLowStockItems(components) {
+      return components.filter(c => {
+        const stock = parseInt(c.stock) || 0;
+        const threshold = parseInt(c.low_stock_threshold ?? c.lowStockThreshold ?? 5) || 5;
+        return stock > 0 && stock <= threshold;
+      });
+    }
+
+    function normalizeUsersResponse(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      if (Array.isArray(raw.data)) return raw.data;
+      if (Array.isArray(raw.users)) return raw.users;
+      if (raw.data && typeof raw.data === "object") return normalizeUsersResponse(raw.data);
+      return [];
+    }
+
+    function getOrderDate(o) {
+      return new Date(o.created_at || o.createdAt || o.date);
+    }
+
+    function getOrderTotal(o) {
+      return parseFloat(o.total_amount ?? o.total ?? 0) || 0;
+    }
+
+    function getOrderUserName(order) {
+      return (order.profiles && order.profiles.full_name)
+        ? order.profiles.full_name
+        : (order.user || order.userName || "N/A");
+    }
+
+    // ---------- MAIN DASHBOARD ----------
+
+    async function loadDashboard() {
+      try {
+        await Promise.all([
+          loadKPIs(),
+          loadCharts(),
+          loadLowStockTable(),
+          loadLatestOrders(),
+          loadTopCustomers()
+        ]);
+      } catch (error) {
+        console.error("Dashboard load error:", error);
+        handleApiError(error);
+      }
+    }
+
+    async function loadKPIs() {
+      try {
+        const [ordersRes, componentsRes, usersRes] = await Promise.allSettled([
+          api().get("/admin/orders"),
+          api().get("/componentsadmin?limit=1000"),
+          api().get("/admin/users")
+        ]);
+
+        let orders = [];
+        if (ordersRes.status === "fulfilled") {
+          orders = normalizeOrdersResponse(ordersRes.value.data);
+        }
+
+        let components = [];
+        if (componentsRes.status === "fulfilled") {
+          components = normalizeComponentsResponse(componentsRes.value.data);
+        }
+
+        let users = [];
+        if (usersRes.status === "fulfilled") {
+          users = normalizeUsersResponse(usersRes.value.data);
+        }
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const revenueToday = orders
+          .filter(o => getOrderDate(o) >= today)
+          .reduce((sum, o) => sum + getOrderTotal(o), 0);
+        
+        const revenue7d = orders
+          .filter(o => getOrderDate(o) >= sevenDaysAgo)
+          .reduce((sum, o) => sum + getOrderTotal(o), 0);
+        
+        const revenue30d = orders
+          .filter(o => getOrderDate(o) >= thirtyDaysAgo)
+          .reduce((sum, o) => sum + getOrderTotal(o), 0);
+
+        const ordersToday = orders.filter(o => getOrderDate(o) >= today).length;
+        const orders7d = orders.filter(o => getOrderDate(o) >= sevenDaysAgo).length;
+        const orders30d = orders.filter(o => getOrderDate(o) >= thirtyDaysAgo).length;
+
+        const lowStockCount = getLowStockItems(components).length;
+        const totalUsers = users.length;
+
+        document.getElementById("revenueToday").textContent = formatCurrency(revenueToday);
+        document.getElementById("revenue7d").textContent = formatCurrency(revenue7d);
+        document.getElementById("revenue30d").textContent = formatCurrency(revenue30d);
+        document.getElementById("ordersToday").textContent = ordersToday;
+        document.getElementById("orders7d").textContent = orders7d;
+        document.getElementById("orders30d").textContent = orders30d;
+        document.getElementById("lowStockCount").textContent = lowStockCount;
+        document.getElementById("totalUsers").textContent = totalUsers;
+
+      } catch (error) {
+        console.error("KPI load error:", error);
+      }
+    }
+
+    async function loadCharts() {
+      try {
+        const [ordersRes, componentsRes] = await Promise.allSettled([
+          api().get("/admin/orders"),
+          api().get("/componentsadmin?limit=1000")
+        ]);
+
+        let orders = [];
+        if (ordersRes.status === "fulfilled") {
+          orders = normalizeOrdersResponse(ordersRes.value.data);
+        }
+        
+        let components = [];
+        if (componentsRes.status === "fulfilled") {
+          components = normalizeComponentsResponse(componentsRes.value.data);
+        }
+
+        // --- Sales chart ---
+        const salesCtx = document.getElementById("salesChart");
+        if (salesCtx && Chart) {
+          const salesByDate = {};
+          orders.forEach(order => {
+            const dateObj = getOrderDate(order);
+            if (isNaN(dateObj)) return;
+            const date = dateObj.toLocaleDateString();
+            salesByDate[date] = (salesByDate[date] || 0) + getOrderTotal(order);
+          });
+
+          const dates = Object.keys(salesByDate).sort(
+            (a, b) => new Date(a) - new Date(b)
+          );
+          const sales = dates.map(d => salesByDate[d]);
+
+          if (salesChart) salesChart.destroy();
+          salesChart = new Chart(salesCtx, {
+            type: "line",
+            data: {
+              labels: dates,
+              datasets: [{
+                label: "Sales",
+                data: sales,
+                borderColor: "rgb(59, 130, 246)",
+                backgroundColor: "rgba(59, 130, 246, 0.1)",
+                tension: 0.4
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              }
+            }
+          });
+        }
+
+        // --- Top Components chart (by stock) ---
+        const topCtx = document.getElementById("topComponentsChart");
+        if (topCtx && Chart) {
+          const topComponents = [...components]
+            .sort((a, b) => (parseInt(b.stock) || 0) - (parseInt(a.stock) || 0))
+            .slice(0, 5);
+
+          const labels = topComponents.map(c => {
+            const name = c.name || c.model || "";
+            const brand = c.brand || "";
+            if (brand && name) return `${brand} ${name}`;
+            if (name) return name;
+            if (brand) return brand;
+            return "Unknown";
+          });
+
+          const counts = topComponents.map(c => parseInt(c.stock) || 0);
+
+          if (topComponentsChart) topComponentsChart.destroy();
+          topComponentsChart = new Chart(topCtx, {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [{
+                label: "Stock",
+                data: counts,
+                backgroundColor: "rgba(34, 197, 94, 0.8)",
+                borderColor: "rgb(34, 197, 94)",
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                y: { beginAtZero: true }
+              }
+            }
+          });
+        }
+
+      } catch (error) {
+        console.error("Charts load error:", error);
+      }
+    }
+
+    async function loadLowStockTable() {
+      try {
+        const res = await api().get("/componentsadmin?limit=1000");
+        const components = normalizeComponentsResponse(res.data);
+        
+        const lowStock = getLowStockItems(components).slice(0, 5);
+
+        const tbody = document.getElementById("lowStockTable");
+        if (lowStock.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-500 text-sm">No low stock items</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = lowStock.map(item => `
+          <tr class="hover:bg-gray-50">
+            <td class="p-2 text-xs">${item.brand || ""} ${item.name || item.model || ""}</td>
+            <td class="p-2 text-xs"><span class="text-red-600 font-semibold">${item.stock}</span></td>
+            <td class="p-2">
+              <button onclick="window.location.href='components.html?edit=${item.id}'" class="text-xs text-blue-600 hover:underline">Restock</button>
+            </td>
+          </tr>
+        `).join("");
+
+      } catch (error) {
+        console.error("Low stock table error:", error);
+      }
+    }
+
+    async function loadLatestOrders() {
+      try {
+        const res = await api().get("/admin/orders");
+        const orders = normalizeOrdersResponse(res.data);
+        
+        const latest = [...orders]
+          .sort((a, b) => getOrderDate(b) - getOrderDate(a))
+          .slice(0, 5);
+
+        const tbody = document.getElementById("latestOrdersTable");
+        if (latest.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500 text-sm">No orders yet</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = latest.map(order => `
+          <tr class="hover:bg-gray-50">
+            <td class="p-2 text-xs font-mono">${order.id || order._id || "N/A"}</td>
+            <td class="p-2 text-xs">${getOrderUserName(order)}</td>
+            <td class="p-2 text-xs font-semibold">${formatCurrency(getOrderTotal(order))}</td>
+            <td class="p-2 text-xs">
+              <span class="px-2 py-1 rounded text-xs ${
+                (order.status === "paid" || order.status === "completed") ? "bg-green-100 text-green-700" :
+                order.status === "shipped" ? "bg-blue-100 text-blue-700" :
+                order.status === "cancelled" ? "bg-red-100 text-red-700" :
+                "bg-yellow-100 text-yellow-700"
+              }">${(order.status || "pending").toUpperCase()}</span>
+            </td>
+            <td class="p-2 text-xs text-gray-500">${formatDate(order.created_at || order.createdAt || order.date)}</td>
+          </tr>
+        `).join("");
+
+      } catch (error) {
+        console.error("Latest orders error:", error);
+      }
+    }
+
+    async function loadTopCustomers() {
+      try {
+        const res = await api().get("/admin/orders");
+        const orders = normalizeOrdersResponse(res.data);
+
+        const customersMap = {};
+
+        orders.forEach(order => {
+          const email =
+            order.profiles?.email ||
+            order.email ||
+            order.user_email ||
+            "N/A";
+
+          const name =
+            order.profiles?.full_name ||
+            order.user ||
+            order.userName ||
+            email ||
+            "Unknown";
+
+          const key = email || name;
+
+          if (!customersMap[key]) {
+            customersMap[key] = {
+              name,
+              email,
+              ordersCount: 0,
+              totalAmount: 0
+            };
+          }
+
+          customersMap[key].ordersCount += 1;
+          customersMap[key].totalAmount += getOrderTotal(order);
+        });
+
+        const customers = Object.values(customersMap)
+          .filter(c => c.email !== "N/A" || c.name !== "Unknown")
+          .sort((a, b) => {
+            if (b.ordersCount !== a.ordersCount) {
+              return b.ordersCount - a.ordersCount;
+            }
+            return b.totalAmount - a.totalAmount;
+          })
+          .slice(0, 5);
+
+        const tbody = document.getElementById("topCustomersTable");
+
+        if (customers.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="3" class="p-4 text-center text-gray-500 text-sm">No customers yet</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = customers.map(c => `
+          <tr class="hover:bg-gray-50">
+            <td class="p-2 text-xs">
+              <div class="font-semibold">${c.name}</div>
+              <div class="text-[11px] text-gray-500">${c.email}</div>
+            </td>
+            <td class="p-2 text-xs text-center">${c.ordersCount}</td>
+            <td class="p-2 text-xs font-semibold">${formatCurrency(c.totalAmount)}</td>
+          </tr>
+        `).join("");
+
+      } catch (error) {
+        console.error("Top customers error:", error);
+        document.getElementById("topCustomersTable").innerHTML =
+          '<tr><td colspan="3" class="p-4 text-center text-gray-500 text-sm">Unable to load customers</td></tr>';
+      }
+    }
+  </script>
+
+</body>
+</html>

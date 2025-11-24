@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders - Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="js/app.js"></script>
+</head>
+
+<body onload="requireAuth(); loadOrders()" class="bg-gray-50">
+
+  <!-- NAVBAR -->
+  <div id="navbar"></div>
+  <script>
+    let navbarLoaded = false;
+    
+    fetch("./partials/navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        if (navbarLoaded) return;
+        navbarLoaded = true;
+        
+        document.getElementById("navbar").innerHTML = html;
+        
+        setTimeout(() => {
+          const mainWrapper = document.querySelector("main#page-content");
+          const pageContent = document.querySelector("#page-content-inner");
+          
+          if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+            mainWrapper.appendChild(pageContent);
+            pageContent.style.display = 'block';
+            pageContent.dataset.moved = 'true';
+          }
+          
+          const link = document.querySelector('a[href="orders.html"]');
+          if (link) {
+            link.classList.add("bg-blue-600", "text-white");
+            link.classList.remove("hover:bg-gray-100", "text-gray-700");
+          }
+        }, 50);
+      })
+      .catch(err => console.error("Navbar load failed:", err));
+  </script>
+
+  <!-- PAGE CONTENT -->
+  <div id="page-content-inner" style="display: none;">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Orders</h1>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div>
+          <label for="statusFilter" class="sr-only">Filter by Status</label>
+          <select id="statusFilter" name="statusFilter" onchange="applyFilters()" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="shipped">Shipped</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="refunded">Refunded</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="dateFrom" class="sr-only">Date From</label>
+          <input type="date" id="dateFrom" name="dateFrom" onchange="applyFilters()" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label for="dateTo" class="sr-only">Date To</label>
+          <input type="date" id="dateTo" name="dateTo" onchange="applyFilters()" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        
+        <div>
+          <label for="searchInput" class="sr-only">Search Orders</label>
+          <input type="text" id="searchInput" name="searchInput" placeholder="Search by user/order ID…" onkeyup="applyFilters()" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders Table -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">OrderID</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">User</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">Items</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">Total</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">Status</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">CreatedAt</th>
+              <th class="p-3 text-left text-xs font-medium text-gray-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ordersTable" class="divide-y divide-gray-200">
+            <tr><td colspan="7" class="p-8 text-center text-gray-500">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Detail Side Panel -->
+  <div id="orderPanel" class="hidden fixed inset-y-0 right-0 w-full md:w-[430px] lg:w-[480px] bg-white shadow-2xl z-50 overflow-y-auto">
+
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-800">Order Details</h2>
+        <button onclick="closeOrderPanel()" class="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+      </div>
+
+      <div id="orderDetailContent">
+        <div class="text-center text-gray-500 py-8">Loading order details...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer"></div>
+  <script>
+    fetch("./partials/footer.html")
+      .then(res => res.text())
+      .then(html => document.getElementById("footer").innerHTML = html)
+      .catch(err => console.error("Footer load failed:", err));
+  </script>
+
+  <script>
+    let allOrders = [];
+    let filteredOrders = [];
+
+    // ---------- HELPERS ----------
+    function getItemsCount(order) {
+      // kung galing backend na computed na
+      if (typeof order.items_count === "number") return order.items_count;
+      if (typeof order.itemsCount === "number") return order.itemsCount;
+
+      // kung may items array, i-sum yung quantity
+      if (Array.isArray(order.items)) {
+        return order.items.reduce((sum, it) => {
+          return sum + (it.quantity || 1);
+        }, 0);
+      }
+
+      return 0;
+    }
+
+    // ---------- LOAD ORDERS ----------
+    async function loadOrders() {
+      try {
+        // Controller: GET /api/admin/orders
+        // Returns: { success: true, orders: [...] }
+        const res = await api().get("/admin/orders");
+        const baseOrders = res.data?.orders || [];
+
+        // kung wala pang items_count sa list, kuha tayo per order
+        const ordersWithCounts = await Promise.all(
+          baseOrders.map(async (order) => {
+            // kung meron nang count or items array, huwag na mag-extra request
+            if (
+              typeof order.items_count === "number" ||
+              typeof order.itemsCount === "number" ||
+              Array.isArray(order.items)
+            ) {
+              return order;
+            }
+
+            try {
+              const detailRes = await api().get(`/admin/orders/${order.id}`);
+              const items = detailRes.data?.items || [];
+
+              const totalQty = items.reduce((sum, it) => {
+                return sum + (it.quantity || 1);
+              }, 0);
+
+              return { ...order, items_count: totalQty, items };
+            } catch (err) {
+              console.warn("Failed to get items for order", order.id, err);
+              return order;
+            }
+          })
+        );
+
+        allOrders = ordersWithCounts;
+        applyFilters();
+      } catch (error) {
+        console.error("Failed to load orders:", error);
+        handleApiError(error);
+        document.getElementById("ordersTable").innerHTML = 
+          '<tr><td colspan="7" class="p-8 text-center text-red-500">Failed to load orders</td></tr>';
+      }
+    }
+
+    // ---------- FILTERS ----------
+    function applyFilters() {
+      const statusFilter = document.getElementById("statusFilter").value;
+      const dateFrom = document.getElementById("dateFrom").value;
+      const dateTo = document.getElementById("dateTo").value;
+      const search = document.getElementById("searchInput").value.toLowerCase();
+
+      filteredOrders = allOrders.filter(order => {
+        const matchStatus =
+          !statusFilter || (order.status || "").toLowerCase() === statusFilter.toLowerCase();
+        
+        // Controller returns profiles.full_name and profiles.email
+        const userName = order.profiles?.full_name || order.user || "N/A";
+        const matchSearch =
+          !search ||
+          (order.id || "").toLowerCase().includes(search) ||
+          userName.toLowerCase().includes(search) ||
+          (order.profiles?.email || "").toLowerCase().includes(search);
+        
+        let matchDate = true;
+        if (dateFrom || dateTo) {
+          const orderDate = new Date(order.created_at);
+          if (dateFrom) {
+            const from = new Date(dateFrom);
+            matchDate = matchDate && orderDate >= from;
+          }
+          if (dateTo) {
+            const to = new Date(dateTo);
+            to.setHours(23, 59, 59);
+            matchDate = matchDate && orderDate <= to;
+          }
+        }
+
+        return matchStatus && matchSearch && matchDate;
+      });
+
+      renderTable();
+    }
+
+    // ---------- RENDER TABLE ----------
+    function renderTable() {
+      if (filteredOrders.length === 0) {
+        document.getElementById("ordersTable").innerHTML = 
+          '<tr><td colspan="7" class="p-8 text-center text-gray-500">No orders found</td></tr>';
+        return;
+      }
+
+      document.getElementById("ordersTable").innerHTML = filteredOrders.map(order => {
+        const itemsCount = getItemsCount(order);
+        const status = (order.status || "pending").toLowerCase();
+        const statusColors = {
+          paid: "bg-green-100 text-green-700",
+          completed: "bg-green-100 text-green-700",
+          shipped: "bg-blue-100 text-blue-700",
+          pending: "bg-yellow-100 text-yellow-700",
+          cancelled: "bg-red-100 text-red-700",
+          refunded: "bg-gray-100 text-gray-700"
+        };
+
+        // Controller returns profiles: { full_name, email }
+        const userName = order.profiles?.full_name || order.user || "N/A";
+
+        return `
+          <tr class="hover:bg-gray-50">
+            <td class="p-3 text-sm font-mono">${order.id || "N/A"}</td>
+            <td class="p-3 text-sm">${userName}</td>
+            <td class="p-3 text-sm">${itemsCount}</td>
+            <td class="p-3 text-sm font-semibold">${formatCurrency(order.total || 0)}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded text-xs ${statusColors[status] || statusColors.pending}">
+                ${status.toUpperCase()}
+              </span>
+            </td>
+            <td class="p-3 text-sm text-gray-500">${formatDate(order.created_at)}</td>
+            <td class="p-3">
+              <button onclick="viewOrder('${order.id}')" class="text-blue-600 hover:underline text-xs">View</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+       async function viewOrder(orderId) {
+      try {
+        document.getElementById("orderPanel").classList.remove("hidden");
+        document.getElementById("orderDetailContent").innerHTML = 
+          '<div class="text-center text-gray-500 py-8">Loading...</div>';
+
+        // Controller: GET /api/admin/orders/:id
+        // Expects: { success: true, order: {...}, items: [...] }
+        const res = await api().get(`/admin/orders/${orderId}`);
+        const order = res.data.order || res.data;
+        const items = res.data.items || order.items || [];
+
+        const userName = order.profiles?.full_name || order.user || "N/A";
+        const userEmail = order.profiles?.email || order.email || "N/A";
+
+        // total quantity ng lahat ng items
+        const totalItemsQty = items.reduce(
+          (sum, it) => sum + (it.quantity || 1),
+          0
+        );
+
+        // build rows with image
+        const itemsRowsHtml = items.map((item) => {
+          const name =
+            item.name ||
+            item.component_name ||
+            (item.component && (item.component.name || item.component.model)) ||
+            "Component";
+
+          const imageUrl =
+            item.image_url ||
+            item.component_image ||
+            item.image ||
+            (item.component && item.component.image_url) ||
+            "";
+
+          const qty = item.quantity || 1;
+          const priceEach = item.price_each || item.price || 0;
+          const subtotal = priceEach * qty;
+
+          const imageCell = imageUrl
+            ? `<img src="${imageUrl}" class="w-10 h-10 rounded object-cover border" alt="img" />`
+            : `<div class="w-10 h-10 rounded bg-gray-200 flex items-center justify-center text-[10px] text-gray-500">No Img</div>`;
+
+          return `
+            <tr>
+              <td class="p-2">
+                <div class="flex items-center gap-3">
+                  ${imageCell}
+                  <div>
+                    <div class="font-semibold text-sm">${name}</div>
+                    ${
+                      item.category
+                        ? `<div class="text-[11px] text-gray-500">${item.category}</div>`
+                        : ""
+                    }
+                  </div>
+                </div>
+              </td>
+              <td class="p-2 text-sm">${qty}</td>
+              <td class="p-2 text-sm">${formatCurrency(priceEach)}</td>
+              <td class="p-2 text-sm font-semibold">${formatCurrency(subtotal)}</td>
+            </tr>
+          `;
+        }).join("");
+
+        document.getElementById("orderDetailContent").innerHTML = `
+          <!-- Order Info -->
+          <div class="mb-6">
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div class="text-gray-500">Order ID</div>
+                  <div class="font-semibold font-mono">${order.id}</div>
+                </div>
+                <div>
+                  <div class="text-gray-500">Status</div>
+                  <div class="font-semibold">${(order.status || "pending").toUpperCase()}</div>
+                </div>
+                <div>
+                  <div class="text-gray-500">Date</div>
+                  <div class="font-semibold">${formatDateTime(order.created_at)}</div>
+                </div>
+                <div>
+                  <div class="text-gray-500">Total</div>
+                  <div class="font-semibold text-lg text-blue-600">${formatCurrency(order.total || 0)}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Customer Info -->
+            <div class="mb-4">
+              <h3 class="font-bold text-gray-800 mb-2">Customer Information</h3>
+              <div class="bg-gray-50 rounded-lg p-4 text-sm">
+                <div class="mb-2"><strong>Name:</strong> ${userName}</div>
+                <div class="mb-2"><strong>Email:</strong> ${userEmail}</div>
+                <div><strong>Phone:</strong> ${order.phone || "N/A"}</div>
+              </div>
+            </div>
+
+            <!-- Items List -->
+            <div class="mb-4">
+              <h3 class="font-bold text-gray-800 mb-2">Items (${totalItemsQty})</h3>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="p-2 text-left text-xs">Component</th>
+                      <th class="p-2 text-left text-xs">Qty</th>
+                      <th class="p-2 text-left text-xs">Price</th>
+                      <th class="p-2 text-left text-xs">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y">
+                    ${itemsRowsHtml || `
+                      <tr>
+                        <td colspan="4" class="p-3 text-center text-gray-500">
+                          No items found for this order
+                        </td>
+                      </tr>
+                    `}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="mb-4">
+              <h3 class="font-bold text-gray-800 mb-2">Timeline</h3>
+              <div class="space-y-2 text-sm">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Order created: ${formatDateTime(order.created_at)}</span>
+                </div>
+                ${order.paid_at ? `
+                  <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Payment received: ${formatDateTime(order.paid_at)}</span>
+                  </div>
+                ` : ""}
+                ${order.shipped_at ? `
+                  <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span>Shipped: ${formatDateTime(order.shipped_at)}</span>
+                  </div>
+                ` : ""}
+                ${order.completed_at ? `
+                  <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Completed: ${formatDateTime(order.completed_at)}</span>
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-wrap gap-2">
+              ${order.status !== "shipped" && order.status !== "completed" ? `
+                <button onclick="updateOrderStatus('${order.id}', 'shipped')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                  Mark Shipped
+                </button>
+              ` : ""}
+              ${order.status === "shipped" ? `
+                <button onclick="updateOrderStatus('${order.id}', 'completed')" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
+                  Mark Completed
+                </button>
+              ` : ""}
+              ${order.status === "paid" || order.status === "completed" ? `
+                <button onclick="updateOrderStatus('${order.id}', 'refunded')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
+                  Refund
+                </button>
+              ` : ""}
+              <button onclick="printOrder('${order.id}')" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                Print
+              </button>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        handleApiError(error);
+        document.getElementById("orderDetailContent").innerHTML = 
+          '<div class="text-center text-red-500 py-8">Failed to load order details</div>';
+      }
+    }
+
+
+    function closeOrderPanel() {
+      document.getElementById("orderPanel").classList.add("hidden");
+    }
+
+    async function updateOrderStatus(orderId, status) {
+      const confirmMessages = {
+        shipped: "Mark this order as shipped?",
+        completed: "Mark this order as completed?",
+        refunded: "Process refund for this order?"
+      };
+
+      if (confirm(confirmMessages[status] || "Update order status?")) {
+        try {
+          await api().put(`/admin/orders/${orderId}/status`, { status });
+          showToast(`Order ${status}`);
+          closeOrderPanel();
+          loadOrders();
+        } catch (error) {
+          handleApiError(error);
+        }
+      }
+    }
+
+    function printOrder(orderId) {
+      window.open(`/orders/${orderId}/print`, "_blank");
+    }
+
+    // Close panel when clicking outside
+    document.getElementById("orderPanel")?.addEventListener("click", (e) => {
+      if (e.target.id === "orderPanel") {
+        closeOrderPanel();
+      }
+    });
+  </script>
+
+</body>
+</html>

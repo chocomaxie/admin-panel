@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Users - Admin Panel</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Axios -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <!-- Chart.js (optional) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Global app helpers: api(), requireAuth, showToast, showLoading, handleApiError, formatDate -->
+  <script src="js/app.js"></script>
+
+  <style>
+    .fade-in {
+      animation: fadeIn 0.5s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+
+<body onload="requireAuth(); loadUsersPage()" class="bg-gray-50">
+
+  <!-- NAVBAR -->
+  <div id="navbar"></div>
+  <script>
+    let navbarLoaded = false;
+
+    fetch("./partials/navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        if (navbarLoaded) return;
+        navbarLoaded = true;
+
+        document.getElementById("navbar").innerHTML = html;
+
+        setTimeout(() => {
+          const mainWrapper = document.querySelector("main#page-content");
+          const pageContent = document.querySelector("#page-content-inner");
+          
+          if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+            mainWrapper.appendChild(pageContent);
+            pageContent.style.display = 'block';
+            pageContent.dataset.moved = 'true';
+          }
+
+          const usersLink = document.querySelector('a[href="users.html"]');
+          if (usersLink) {
+            usersLink.classList.add("bg-blue-600", "text-white");
+            usersLink.classList.remove("hover:bg-gray-100", "text-gray-700");
+          }
+        }, 50);
+      })
+      .catch(err => console.error("Navbar load failed:", err));
+  </script>
+
+  <!-- PAGE CONTENT (will be moved into navbar's <main>) -->
+  <div id="page-content-inner" class="fade-in" style="display:none;">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Users</h1>
+    </div>
+
+    <!-- Filters -->
+    <section class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Search</label>
+          <input 
+            id="searchInput"
+            type="text"
+            placeholder="Search name or email…"
+            onkeyup="applyUserFilters()"
+            class="w-full border rounded px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Role</label>
+          <select 
+            id="filterRole"
+            onchange="applyUserFilters()"
+            class="w-full border rounded px-3 py-2 text-sm"
+          >
+            <option value="">All</option>
+            <option value="admin">Admin</option>
+            <option value="user">User</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Status</label>
+          <select 
+            id="filterStatus"
+            onchange="applyUserFilters()"
+            class="w-full border rounded px-3 py-2 text-sm"
+          >
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="banned">Banned</option>
+          </select>
+        </div>
+
+        <div class="flex items-end">
+          <button
+            onclick="resetUserFilters()"
+            class="w-full border rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Users Table -->
+    <section class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b">
+            <tr>
+              <th class="p-3 text-left text-xs text-gray-600">Name</th>
+              <th class="p-3 text-left text-xs text-gray-600">Email</th>
+              <th class="p-3 text-left text-xs text-gray-600">Role</th>
+              <th class="p-3 text-left text-xs text-gray-600">Status</th>
+              <th class="p-3 text-left text-xs text-gray-600">Joined</th>
+              <th class="p-3 text-left text-xs text-gray-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTable" class="divide-y">
+            <tr><td colspan="6" class="p-8 text-center text-gray-500">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="bg-gray-50 px-4 py-3 flex items-center justify-between border-t">
+        <div class="text-sm text-gray-700">
+          Showing <span id="pageStart">0</span> to <span id="pageEnd">0</span> of <span id="totalUsersCount">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="prevBtn" onclick="changeUserPage(-1)" class="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
+          <div id="pageNumbers" class="flex gap-1"></div>
+          <button id="nextBtn" onclick="changeUserPage(1)" class="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer"></div>
+  <script>
+    fetch("./partials/footer.html")
+      .then(res => res.text())
+      .then(html => document.getElementById("footer").innerHTML = html)
+      .catch(err => console.error("Footer load failed:", err));
+  </script>
+
+  <script>
+    // ===== STATE =====
+    let allUsers = [];
+    let filteredUsers = [];
+    let currentPage = 1;
+    const usersPerPage = 10;
+
+    // ===== HELPERS =====
+    function normalizeUsersResponse(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      if (Array.isArray(raw.data)) return raw.data;
+      if (Array.isArray(raw.users)) return raw.users;
+      if (Array.isArray(raw.rows)) return raw.rows;
+      if (raw.data && typeof raw.data === "object") return normalizeUsersResponse(raw.data);
+      return [];
+    }
+
+    function getUserName(u) {
+      return (
+        u.full_name ||
+        u.name ||
+        u.profiles?.full_name ||
+        u.profile?.full_name ||
+        "N/A"
+      );
+    }
+
+    function getUserEmail(u) {
+      return (
+        u.email ||
+        u.profiles?.email ||
+        u.profile?.email ||
+        "N/A"
+      );
+    }
+
+    function getUserRole(u) {
+      return (
+        u.role ||
+        u.user_role ||
+        u.profiles?.role ||
+        "user"
+      );
+    }
+
+    function getUserStatus(u) {
+      return (
+        u.status ||
+        u.account_status ||
+        "active"
+      );
+    }
+
+    function getUserCreatedAt(u) {
+      return u.created_at || u.createdAt || u.created || u.inserted_at || null;
+    }
+
+    // ===== PAGE INIT =====
+    async function loadUsersPage() {
+      try {
+        await loadUsers();
+      } catch (err) {
+        console.error("Users page load error:", err);
+        handleApiError(err);
+      }
+    }
+
+    async function loadUsers() {
+      const tbody = document.getElementById("usersTable");
+      try {
+        showLoading(tbody); // from app.js
+
+        const res = await api().get("/admin/users");
+        const data = res.data;
+        allUsers = normalizeUsersResponse(data);
+
+        applyUserFilters();
+      } catch (err) {
+        console.error("Failed to load users:", err);
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="p-8 text-center text-red-500">Failed to load users</td></tr>';
+        handleApiError(err);
+      }
+    }
+
+    // ===== FILTERING =====
+    function applyUserFilters() {
+      const search = document.getElementById("searchInput").value.toLowerCase();
+      const roleFilter = document.getElementById("filterRole").value;
+      const statusFilter = document.getElementById("filterStatus").value;
+
+      filteredUsers = allUsers.filter(u => {
+        const name = getUserName(u).toLowerCase();
+        const email = getUserEmail(u).toLowerCase();
+        const role = (getUserRole(u) || "").toLowerCase();
+        const status = (getUserStatus(u) || "").toLowerCase();
+
+        const matchSearch =
+          !search ||
+          name.includes(search) ||
+          email.includes(search);
+
+        const matchRole = !roleFilter || role === roleFilter.toLowerCase();
+        const matchStatus = !statusFilter || status === statusFilter.toLowerCase();
+
+        return matchSearch && matchRole && matchStatus;
+      });
+
+      currentPage = 1;
+      renderUsersTable();
+    }
+
+    function resetUserFilters() {
+      document.getElementById("searchInput").value = "";
+      document.getElementById("filterRole").value = "";
+      document.getElementById("filterStatus").value = "";
+      applyUserFilters();
+    }
+
+    // ===== RENDER TABLE + PAGINATION =====
+    function renderUsersTable() {
+      const tbody = document.getElementById("usersTable");
+
+      if (!filteredUsers.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="p-8 text-center text-gray-500">No users found</td></tr>';
+        document.getElementById("pageStart").textContent = 0;
+        document.getElementById("pageEnd").textContent = 0;
+        document.getElementById("totalUsersCount").textContent = 0;
+        document.getElementById("pageNumbers").innerHTML = "";
+        document.getElementById("prevBtn").disabled = true;
+        document.getElementById("nextBtn").disabled = true;
+        return;
+      }
+
+      const total = filteredUsers.length;
+      const totalPages = Math.ceil(total / usersPerPage) || 1;
+
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      const startIdx = (currentPage - 1) * usersPerPage;
+      const endIdx = startIdx + usersPerPage;
+      const pageData = filteredUsers.slice(startIdx, endIdx);
+
+      const rows = pageData.map(u => {
+        const name = getUserName(u);
+        const email = getUserEmail(u);
+        const role = getUserRole(u);
+        const status = (getUserStatus(u) || "active").toLowerCase();
+        const createdAt = getUserCreatedAt(u);
+        const userId = u.id || u.user_id || u.userId || "";
+
+        const statusClass =
+          status === "active"
+            ? "bg-green-100 text-green-700"
+            : status === "banned"
+            ? "bg-red-100 text-red-700"
+            : "bg-gray-100 text-gray-700";
+
+        const isAdmin = (role || "").toLowerCase() === "admin";
+        const isBanned = status === "banned";
+
+        return `
+          <tr class="hover:bg-gray-50">
+            <td class="p-3 text-sm font-medium text-gray-800">${name}</td>
+            <td class="p-3 text-sm text-gray-700">${email}</td>
+            <td class="p-3 text-sm text-gray-700 capitalize">${role}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded text-xs ${statusClass}">
+                ${status.toUpperCase()}
+              </span>
+            </td>
+            <td class="p-3 text-sm text-gray-500">
+              ${createdAt ? formatDate(createdAt) : "N/A"}
+            </td>
+            <td class="p-3 text-sm">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  onclick="toggleUserRole('${userId}','${role}')"
+                  class="text-xs text-purple-600 hover:underline"
+                >
+                  ${isAdmin ? "Remove Admin" : "Make Admin"}
+                </button>
+                <button
+                  onclick="toggleUserStatus('${userId}','${status}')"
+                  class="text-xs ${isBanned ? "text-green-600" : "text-red-600"} hover:underline"
+                >
+                  ${isBanned ? "Unban" : "Ban"}
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      tbody.innerHTML = rows;
+
+      document.getElementById("pageStart").textContent = startIdx + 1;
+      document.getElementById("pageEnd").textContent = Math.min(endIdx, total);
+      document.getElementById("totalUsersCount").textContent = total;
+
+      renderUserPageNumbers(totalPages);
+    }
+
+    function renderUserPageNumbers(totalPages) {
+      const container = document.getElementById("pageNumbers");
+      const prevBtn = document.getElementById("prevBtn");
+      const nextBtn = document.getElementById("nextBtn");
+
+      const buttons = [];
+
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+          buttons.push(`
+            <button
+              onclick="goToUserPage(${i})"
+              class="px-3 py-1 rounded ${
+                i === currentPage
+                  ? "bg-blue-600 text-white"
+                  : "border hover:bg-gray-100"
+              }"
+            >
+              ${i}
+            </button>
+          `);
+        } else if (i === currentPage - 2 || i === currentPage + 2) {
+          buttons.push(`<span class="px-2">...</span>`);
+        }
+      }
+
+      container.innerHTML = buttons.join("");
+
+      prevBtn.disabled = currentPage === 1;
+      nextBtn.disabled = currentPage >= totalPages;
+    }
+
+    function changeUserPage(direction) {
+      const totalPages = Math.ceil(filteredUsers.length / usersPerPage) || 1;
+      const next = currentPage + direction;
+      if (next >= 1 && next <= totalPages) {
+        currentPage = next;
+        renderUsersTable();
+      }
+    }
+
+    function goToUserPage(page) {
+      currentPage = page;
+      renderUsersTable();
+    }
+
+    // ===== ACTION HANDLERS =====
+
+    // Orders button – dadalhin ka sa orders page,
+    // pwede mong gamitin later yung ?search= para auto-filter
+    function viewUserOrders(emailEncoded) {
+      const email = decodeURIComponent(emailEncoded || "");
+      if (!email) return;
+      window.location.href = `orders.html?search=${encodeURIComponent(email)}`;
+    }
+
+    async function toggleUserRole(userId, currentRole) {
+      if (!userId) return;
+      const normalized = (currentRole || "user").toLowerCase();
+      const newRole = normalized === "admin" ? "user" : "admin";
+
+      const ok = confirm(
+        newRole === "admin"
+          ? "Make this user an ADMIN?"
+          : "Remove admin role from this user?"
+      );
+      if (!ok) return;
+
+      try {
+        await api().put(`/admin/users/${userId}`, { role: newRole });
+        showToast(`User role updated to ${newRole}`);
+        await loadUsers();
+      } catch (err) {
+        handleApiError(err);
+      }
+    }
+
+    async function toggleUserStatus(userId, currentStatus) {
+      if (!userId) return;
+      const normalized = (currentStatus || "active").toLowerCase();
+      const newStatus = normalized === "banned" ? "active" : "banned";
+
+      const ok = confirm(
+        newStatus === "banned"
+          ? "Ban this user? They will no longer be able to log in."
+          : "Unban this user and allow login again?"
+      );
+      if (!ok) return;
+
+      try {
+        await api().put(`/admin/users/${userId}`, { status: newStatus });
+        showToast(`User status updated to ${newStatus}`);
+        await loadUsers();
+      } catch (err) {
+        handleApiError(err);
+      }
+    }
+  </script>
+</body>
+</html>

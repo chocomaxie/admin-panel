@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics - Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/app.js"></script>
+</head>
+
+<body onload="requireAuth(); initAnalytics()" class="bg-gray-50">
+
+  <!-- NAVBAR -->
+  <div id="navbar"></div>
+  <script>
+    let navbarLoaded = false;
+    
+    fetch("./partials/navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        if (navbarLoaded) return;
+        navbarLoaded = true;
+        
+        document.getElementById("navbar").innerHTML = html;
+        
+        setTimeout(() => {
+          const mainWrapper = document.querySelector("main#page-content");
+          const pageContent = document.querySelector("#page-content-inner");
+          
+          if (mainWrapper && pageContent && !pageContent.dataset.moved) {
+            mainWrapper.appendChild(pageContent);
+            pageContent.style.display = 'block';
+            pageContent.dataset.moved = 'true';
+          }
+          
+          const link = document.querySelector('a[href="analytics.html"]');
+          if (link) {
+            link.classList.add("bg-blue-600", "text-white");
+            link.classList.remove("hover:bg-gray-100", "text-gray-700");
+          }
+        }, 50);
+      })
+      .catch(err => console.error("Navbar load failed:", err));
+  </script>
+
+  <!-- PAGE CONTENT -->
+  <div id="page-content-inner" style="display: none;">
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-800">Analytics</h1>
+        <p class="text-gray-600 mt-1">Business insights and performance metrics</p>
+      </div>
+      <button onclick="exportAnalytics()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition">
+        Export CSV
+      </button>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <label for="dateFrom" class="sr-only">Date From</label>
+              <input type="date" id="dateFrom" name="dateFrom" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1">
+              <label for="dateTo" class="sr-only">Date To</label>
+              <input type="date" id="dateTo" name="dateTo" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+        </div>
+        <div>
+          <label for="groupBy" class="block text-sm font-medium text-gray-700 mb-1">Group By</label>
+          <select id="groupBy" name="groupBy" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="day">Day</option>
+            <option value="week">Week</option>
+            <option value="month" selected>Month</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button onclick="loadAnalytics()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+            Apply Filters
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+        <div class="text-sm text-gray-600 mb-1">Revenue</div>
+        <div class="text-2xl font-bold text-gray-800" id="totalRevenue">₱0</div>
+        <div class="text-xs text-gray-500 mt-1">Total sales</div>
+      </div>
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+        <div class="text-sm text-gray-600 mb-1">Orders</div>
+        <div class="text-2xl font-bold text-gray-800" id="totalOrders">0</div>
+        <div class="text-xs text-gray-500 mt-1">Completed orders</div>
+      </div>
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+        <div class="text-sm text-gray-600 mb-1">AOV</div>
+        <div class="text-2xl font-bold text-gray-800" id="aov">₱0</div>
+        <div class="text-xs text-gray-500 mt-1">Average order value</div>
+      </div>
+      <div class="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+        <div class="text-sm text-gray-600 mb-1">Components</div>
+        <div class="text-2xl font-bold text-gray-800" id="totalComponents">0</div>
+        <div class="text-xs text-gray-500 mt-1">In stock</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Revenue Over Time</h2>
+        <div class="relative" style="height: 250px;">
+          <canvas id="revenueChart"></canvas>
+        </div>
+      </div>
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Orders Over Time</h2>
+        <div class="relative" style="height: 250px;">
+          <canvas id="ordersChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Top Categories</h2>
+        <div class="relative" style="height: 250px;">
+          <canvas id="categoriesChart"></canvas>
+        </div>
+      </div>
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Top Components</h2>
+        <div class="relative" style="height: 250px;">
+          <canvas id="componentsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drill-down Tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Best Sellers</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Component</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Sold</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Revenue</th>
+              </tr>
+            </thead>
+            <tbody id="bestSellersTable" class="divide-y divide-gray-200">
+              <tr><td colspan="3" class="p-4 text-center text-gray-500">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Low Stock Items</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Component</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Stock</th>
+                <th class="p-2 text-left text-xs font-medium text-gray-600">Status</th>
+              </tr>
+            </thead>
+            <tbody id="lowStockTable" class="divide-y divide-gray-200">
+              <tr><td colspan="3" class="p-4 text-center text-gray-500">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer"></div>
+  <script>
+    fetch("./partials/footer.html")
+      .then(res => res.text())
+      .then(html => document.getElementById("footer").innerHTML = html)
+      .catch(err => console.error("Footer load failed:", err));
+  </script>
+
+  <script>
+    let revenueChart = null;
+    let ordersChart = null;
+    let categoriesChart = null;
+    let componentsChart = null;
+
+    function initAnalytics() {
+      // Set default date range (last 30 days)
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      document.getElementById("dateFrom").value = thirtyDaysAgo.toISOString().split("T")[0];
+      document.getElementById("dateTo").value = today.toISOString().split("T")[0];
+      
+      loadAnalytics();
+    }
+
+    async function loadAnalytics() {
+      try {
+        const dateFrom = document.getElementById("dateFrom").value;
+        const dateTo = document.getElementById("dateTo").value;
+        const groupBy = document.getElementById("groupBy").value;
+
+        const [ordersRes, componentsRes] = await Promise.allSettled([
+          api().get("/orders"),
+          api().get("/componentsadmin")
+        ]);
+
+        const orders = ordersRes.status === "fulfilled" ? (ordersRes.value.data?.data || ordersRes.value.data || []) : [];
+        const components = componentsRes.status === "fulfilled" ? (componentsRes.value.data?.data || componentsRes.value.data || []) : [];
+
+        // Filter by date range
+        const filteredOrders = orders.filter(o => {
+          const orderDate = new Date(o.created_at || o.createdAt || o.date);
+          const from = dateFrom ? new Date(dateFrom) : new Date(0);
+          const to = dateTo ? new Date(dateTo) : new Date();
+          to.setHours(23, 59, 59);
+          return orderDate >= from && orderDate <= to;
+        });
+
+        // Calculate KPIs
+        const totalRevenue = filteredOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.total_amount) || 0), 0);
+        const totalOrders = filteredOrders.length;
+        const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+        const totalComponents = components.filter(c => (parseInt(c.stock) || 0) > 0).length;
+
+        document.getElementById("totalRevenue").textContent = formatCurrency(totalRevenue);
+        document.getElementById("totalOrders").textContent = totalOrders;
+        document.getElementById("aov").textContent = formatCurrency(aov);
+        document.getElementById("totalComponents").textContent = totalComponents;
+
+        // Load charts
+        loadCharts(filteredOrders, components, groupBy);
+        loadBestSellers(filteredOrders, components);
+        loadLowStock(components);
+
+      } catch (error) {
+        console.error("Analytics load error:", error);
+        handleApiError(error);
+      }
+    }
+
+    function loadCharts(orders, components, groupBy) {
+      // Group orders by time period
+      const grouped = {};
+      orders.forEach(order => {
+        const date = new Date(order.created_at || order.createdAt || order.date);
+        let key = "";
+        
+        if (groupBy === "day") {
+          key = date.toLocaleDateString();
+        } else if (groupBy === "week") {
+          const week = getWeekNumber(date);
+          key = `${date.getFullYear()}-W${week}`;
+        } else {
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        }
+        
+        if (!grouped[key]) {
+          grouped[key] = { revenue: 0, orders: 0 };
+        }
+        grouped[key].revenue += parseFloat(order.total || order.total_amount) || 0;
+        grouped[key].orders += 1;
+      });
+
+      const labels = Object.keys(grouped).sort();
+      const revenueData = labels.map(l => grouped[l].revenue);
+      const ordersData = labels.map(l => grouped[l].orders);
+
+      // Revenue Chart
+      const revCtx = document.getElementById("revenueChart");
+      if (revenueChart) revenueChart.destroy();
+      revenueChart = new Chart(revCtx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Revenue",
+            data: revenueData,
+            borderColor: "rgb(59, 130, 246)",
+            backgroundColor: "rgba(59, 130, 246, 0.1)",
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => `₱${context.parsed.y.toLocaleString()}`
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      // Orders Chart
+      const ordCtx = document.getElementById("ordersChart");
+      if (ordersChart) ordersChart.destroy();
+      ordersChart = new Chart(ordCtx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Orders",
+            data: ordersData,
+            borderColor: "rgb(34, 197, 94)",
+            backgroundColor: "rgba(34, 197, 94, 0.1)",
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Top Categories
+      const categoryCount = {};
+      components.forEach(c => {
+        const cat = c.category_id || c.type || "Other";
+        categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+      });
+      const topCategories = Object.entries(categoryCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      const catCtx = document.getElementById("categoriesChart");
+      if (categoriesChart) categoriesChart.destroy();
+      categoriesChart = new Chart(catCtx, {
+        type: "bar",
+        data: {
+          labels: topCategories.map(c => c[0]),
+          datasets: [{
+            label: "Count",
+            data: topCategories.map(c => c[1]),
+            backgroundColor: [
+              "rgba(168, 85, 247, 0.8)",
+              "rgba(236, 72, 153, 0.8)",
+              "rgba(59, 130, 246, 0.8)",
+              "rgba(34, 197, 94, 0.8)",
+              "rgba(251, 146, 60, 0.8)"
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Top Components (by price)
+      const topComps = components
+        .filter(c => c.price)
+        .sort((a, b) => (parseFloat(b.price) || 0) - (parseFloat(a.price) || 0))
+        .slice(0, 5);
+
+      const compCtx = document.getElementById("componentsChart");
+      if (componentsChart) componentsChart.destroy();
+      componentsChart = new Chart(compCtx, {
+        type: "bar",
+        data: {
+          labels: topComps.map(c => `${c.brand || ''} ${c.name || c.model || ''}`.substring(0, 20)),
+          datasets: [{
+            label: "Price",
+            data: topComps.map(c => parseFloat(c.price) || 0),
+            backgroundColor: "rgba(251, 146, 60, 0.8)"
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => `₱${context.parsed.y.toLocaleString()}`
+              }
+            }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function loadBestSellers(orders, components) {
+      const sales = {};
+      orders.forEach(order => {
+        const items = Array.isArray(order.items) ? order.items : 
+                     (order.order_items ? order.order_items : []);
+        items.forEach(item => {
+          const compId = item.component_id || item.componentId || item.id;
+          if (!sales[compId]) {
+            sales[compId] = { 
+              sold: 0, 
+              revenue: 0, 
+              name: item.name || `${item.brand || ''} ${item.model || ''}`.trim() || 'Unknown'
+            };
+          }
+          const qty = item.quantity || item.qty || 1;
+          const price = item.price || 0;
+          sales[compId].sold += qty;
+          sales[compId].revenue += price * qty;
+        });
+      });
+
+      const bestSellers = Object.entries(sales)
+        .sort((a, b) => b[1].sold - a[1].sold)
+        .slice(0, 10);
+
+      const tbody = document.getElementById("bestSellersTable");
+      if (bestSellers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-500">No sales data</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = bestSellers.map(([id, data]) => `
+        <tr class="hover:bg-gray-50">
+          <td class="p-2 text-xs">${data.name}</td>
+          <td class="p-2 text-xs font-semibold">${data.sold}</td>
+          <td class="p-2 text-xs font-semibold text-green-600">${formatCurrency(data.revenue)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function loadLowStock(components) {
+      const lowStock = components
+        .filter(c => {
+          const stock = parseInt(c.stock) || 0;
+          const threshold = parseInt(c.low_stock_threshold) || 5;
+          return stock <= threshold && stock > 0;
+        })
+        .sort((a, b) => (parseInt(a.stock) || 0) - (parseInt(b.stock) || 0))
+        .slice(0, 10);
+
+      const tbody = document.getElementById("lowStockTable");
+      if (lowStock.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-500">All items well stocked</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = lowStock.map(item => {
+        const stock = parseInt(item.stock) || 0;
+        return `
+          <tr class="hover:bg-gray-50">
+            <td class="p-2 text-xs">${item.brand || ''} ${item.name || item.model || ''}</td>
+            <td class="p-2 text-xs font-semibold text-red-600">${stock}</td>
+            <td class="p-2">
+              <span class="px-2 py-1 rounded text-xs bg-red-100 text-red-700">LOW</span>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function getWeekNumber(date) {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function exportAnalytics() {
+      const dateFrom = document.getElementById("dateFrom").value;
+      const dateTo = document.getElementById("dateTo").value;
+      showToast(`Exporting analytics from ${dateFrom} to ${dateTo}...`);
+      
+      // In real implementation, this would export actual data
+      setTimeout(() => {
+        showToast("Export feature coming soon", "info");
+      }, 1000);
+    }
+  </script>
+
+</body>
+</html>
