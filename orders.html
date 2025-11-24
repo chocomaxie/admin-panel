@@ -242,7 +242,8 @@
       } catch (error) {
         console.error("Failed to load orders:", error);
         handleApiError(error);
-        document.getElementById("ordersTable").innerHTML = 
+        const tbody = document.getElementById("ordersTable");
+        tbody.innerHTML = 
           '<tr><td colspan="7" class="p-8 text-center text-red-500">Failed to load orders</td></tr>';
         document.getElementById("pageStart").textContent = 0;
         document.getElementById("pageEnd").textContent = 0;
@@ -348,7 +349,6 @@
                 <button onclick="viewOrder('${order.id}')" class="text-blue-600 hover:underline text-xs">
                   View
                 </button>
-               
                 <button onclick="deleteOrder('${order.id}')" class="text-red-600 hover:underline text-xs">
                   Delete
                 </button>
@@ -434,6 +434,9 @@
           order.notes ||
           "";
 
+        const statusRaw = order.status || "pending";
+        const statusLower = statusRaw.toLowerCase();
+
         const totalItemsQty = items.reduce(
           (sum, it) => sum + (it.quantity || 1),
           0
@@ -494,7 +497,7 @@
                 </div>
                 <div>
                   <div class="text-gray-500">Status</div>
-                  <div class="font-semibold">${(order.status || "pending").toUpperCase()}</div>
+                  <div class="font-semibold">${statusRaw.toUpperCase()}</div>
                 </div>
                 <div>
                   <div class="text-gray-500">Date</div>
@@ -578,7 +581,7 @@
               </div>
             </div>
 
-            ${order.status === "cancelled" && cancelReason ? `
+            ${statusLower === "cancelled" && cancelReason ? `
               <!-- Cancellation Reason -->
               <div class="mb-4">
                 <h3 class="font-bold text-gray-800 mb-2">Cancellation Reason</h3>
@@ -590,17 +593,17 @@
 
             <!-- Actions -->
             <div class="flex flex-wrap gap-2">
-              ${order.status !== "shipped" && order.status !== "completed" ? `
+              ${statusLower !== "shipped" && statusLower !== "completed" ? `
                 <button onclick="updateOrderStatus('${order.id}', 'shipped')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
                   Mark Shipped
                 </button>
               ` : ""}
-              ${order.status === "shipped" ? `
+              ${statusLower === "shipped" ? `
                 <button onclick="updateOrderStatus('${order.id}', 'completed')" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
                   Mark Completed
                 </button>
               ` : ""}
-              ${order.status === "paid" || order.status === "completed" ? `
+              ${(statusLower === "paid" || statusLower === "completed") ? `
                 <button onclick="updateOrderStatus('${order.id}', 'refunded')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
                   Refund
                 </button>
@@ -626,92 +629,97 @@
       document.getElementById("orderPanel").classList.add("hidden");
     }
 
-    // ---------- UPDATE STATUS ----------
+    // ---------- UPDATE STATUS (with typed confirmation) ----------
     async function updateOrderStatus(orderId, status) {
-  const messages = {
-    shipped: {
-      title: "Mark as Shipped",
-      msg: "Are you sure you want to mark this order as SHIPPED?",
-      btn: "Mark Shipped",
-      word: "SHIP",
-    },
-    completed: {
-      title: "Mark as Completed",
-      msg: "Mark this order as COMPLETED?",
-      btn: "Mark Completed",
-      word: "COMPLETE",
-    },
-    refunded: {
-      title: "Refund Order",
-      msg: "Process REFUND for this order?",
-      btn: "Refund",
-      word: "REFUND",
-    },
-  };
+      const configs = {
+        shipped: {
+          title: "Mark as Shipped",
+          msg: "Are you sure you want to mark this order as SHIPPED?",
+          btn: "Mark Shipped",
+          requireText: "SHIP",
+          label: 'Type SHIP to confirm:',
+          hint: 'This will mark the order as shipped.',
+        },
+        completed: {
+          title: "Mark as Completed",
+          msg: "Are you sure you want to mark this order as COMPLETED?",
+          btn: "Mark Completed",
+          requireText: "COMPLETE",
+          label: 'Type COMPLETE to confirm:',
+          hint: 'This will mark the order as completed.',
+        },
+        refunded: {
+          title: "Refund Order",
+          msg: "Are you sure you want to REFUND this order?",
+          btn: "Refund",
+          requireText: "REFUND",
+          label: 'Type REFUND to confirm:',
+          hint: 'This will process a refund for this order.',
+        },
+      };
 
-  const cfg = messages[status] || {
-    title: "Update Order Status",
-    msg: "Update order status?",
-    btn: "Confirm",
-    word: "CONFIRM",
-  };
+      const cfg = configs[status] || {
+        title: "Update Order Status",
+        msg: "Update order status?",
+        btn: "Confirm",
+        requireText: "CONFIRM",
+        label: 'Type CONFIRM to continue:',
+        hint: '',
+      };
 
-  const ok = await openConfirmModal({
-    title: cfg.title,
-    message: cfg.msg,
-    confirmText: cfg.btn,
-    confirmVariant: status === "refunded" ? "danger" : "primary",
-    requireText: cfg.word,
-    requireTextLabel: `Type ${cfg.word} to confirm:`,
-    requireTextHint: `To prevent mistakes, type ${cfg.word} in all caps.`,
-  });
+      const ok = await openConfirmModal({
+        title: cfg.title,
+        message: cfg.msg,
+        confirmText: cfg.btn,
+        confirmVariant: status === "refunded" ? "danger" : "primary",
+        requireText: cfg.requireText,
+        requireTextLabel: cfg.label,
+        requireTextHint: cfg.hint,
+      });
 
-  if (!ok) return;
+      if (!ok) return;
 
-  try {
-    await api().put(`/admin/orders/${orderId}/status`, { status });
-    showToast(`Order ${status}`);
-    closeOrderPanel();
-    loadOrders();
-  } catch (error) {
-    handleApiError(error);
-  }
-}
-
-
+      try {
+        await api().put(`/admin/orders/${orderId}/status`, { status });
+        showToast(`Order ${status}`);
+        closeOrderPanel();
+        loadOrders();
+      } catch (error) {
+        handleApiError(error);
+      }
+    }
 
     // ---------- DELETE ORDER (requires typing DELETE) ----------
     async function deleteOrder(orderId) {
-  const ok = await openConfirmModal({
-    title: "Delete Order",
-    message:
-      "This will permanently delete this order. This action cannot be undone.",
-    confirmText: "Delete",
-    confirmVariant: "danger",
-    requireText: "DELETE",
-    requireTextLabel: "Type DELETE to confirm:",
-    requireTextHint: "To prevent mistakes, type DELETE in all caps.",
-  });
+      const ok = await openConfirmModal({
+        title: "Delete Order",
+        message:
+          "This will permanently delete this order. This action cannot be undone.",
+        confirmText: "Delete",
+        confirmVariant: "danger",
+        requireText: "DELETE",
+        requireTextLabel: "Type DELETE to confirm:",
+        requireTextHint: "To prevent mistakes, type DELETE in all caps.",
+      });
 
-  if (!ok) return;
+      if (!ok) return;
 
-  try {
-    await api().delete(`/admin/orders/${orderId}`);
-    showToast("Order deleted");
-    closeOrderPanel();
-    loadOrders();
-  } catch (error) {
-    handleApiError(error);
-  }
-}
-
+      try {
+        await api().delete(`/admin/orders/${orderId}`);
+        showToast("Order deleted");
+        closeOrderPanel();
+        loadOrders();
+      } catch (error) {
+        handleApiError(error);
+      }
+    }
 
     function printOrder(orderId) {
-  // open a separate static page for printing
-  window.open(`order-print.html?id=${encodeURIComponent(orderId)}`, "_blank");
-}
+      // open a separate static page for printing
+      window.open(`order-print.html?id=${encodeURIComponent(orderId)}`, "_blank");
+    }
 
-    // Close panel when clicking outside
+    // Close panel when clicking outside (clicking the backdrop area)
     document.getElementById("orderPanel")?.addEventListener("click", (e) => {
       if (e.target.id === "orderPanel") {
         closeOrderPanel();
