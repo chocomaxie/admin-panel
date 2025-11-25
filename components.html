@@ -283,10 +283,12 @@
                   >Type *</label
                 >
                 <select
-                  id="type"
-                  required
-                  class="w-full border rounded px-3 py-2"
-                >
+  id="type"
+  required
+  class="w-full border rounded px-3 py-2"
+  onchange="onTypeChange(this.value)"
+>
+
                   <option value="">Select Type</option>
                   <option value="CPU">CPU</option>
                   <option value="GPU">GPU</option>
@@ -526,6 +528,7 @@
     <div id="toastRoot" class="toast"></div>
 
     <!-- PAGE LOGIC -->
+    <!-- PAGE LOGIC -->
     <script>
       let allComponents = [];
       let filteredComponents = [];
@@ -622,17 +625,13 @@
         return rawId; // fallback
       }
 
-      // Helper: ensure value exists in <select>, then select it
-
-        // Helper: lagyan / i-select ang value sa specs dropdown
-function fillSpecSelect(selectId, value) {
-  if (!value) return;
-  const selectEl = document.getElementById(selectId);
-  if (!selectEl) return;
-
-  // gamitin existing helper para siguradong may option
-  selectOrAddOption(selectEl, value);
-}
+      // Helper: lagyan / i-select ang value sa specs dropdown
+      function fillSpecSelect(selectId, value) {
+        if (!value) return;
+        const selectEl = document.getElementById(selectId);
+        if (!selectEl) return;
+        selectOrAddOption(selectEl, value);
+      }
 
       function selectOrAddOption(selectEl, value) {
         if (!selectEl || !value) return;
@@ -647,36 +646,35 @@ function fillSpecSelect(selectId, value) {
         }
         selectEl.value = value;
       }
+
       // ------- SPEC HELPERS -------
+      // Kunin ang value sa specs kahit iba ang pangalan / casing ng key
+      function getSpecValue(specs, ...keys) {
+        if (!specs || typeof specs !== "object") return "";
 
-// Kunin ang value sa specs kahit iba ang pangalan / casing ng key
-function getSpecValue(specs, ...keys) {
-  if (!specs || typeof specs !== "object") return "";
+        for (const wanted of keys) {
+          // direct hit
+          if (specs[wanted] != null && specs[wanted] !== "") {
+            return String(specs[wanted]);
+          }
 
-  for (const wanted of keys) {
-    // direct hit
-    if (specs[wanted] != null && specs[wanted] !== "") {
-      return String(specs[wanted]);
-    }
+          // case-insensitive + underscore / space tolerant
+          const wantedNorm = String(wanted).toLowerCase().replace(/\s+/g, "_");
 
-    // case-insensitive + underscore / space tolerant
-    const wantedNorm = String(wanted).toLowerCase().replace(/\s+/g, "_");
+          for (const actualKey in specs) {
+            const actualNorm = actualKey.toLowerCase().replace(/\s+/g, "_");
+            if (
+              actualNorm === wantedNorm &&
+              specs[actualKey] != null &&
+              specs[actualKey] !== ""
+            ) {
+              return String(specs[actualKey]);
+            }
+          }
+        }
 
-    for (const actualKey in specs) {
-      const actualNorm = actualKey.toLowerCase().replace(/\s+/g, "_");
-      if (
-        actualNorm === wantedNorm &&
-        specs[actualKey] != null &&
-        specs[actualKey] !== ""
-      ) {
-        return String(specs[actualKey]);
+        return "";
       }
-    }
-  }
-
-  return "";
-}
-
 
       function initPage() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -689,7 +687,9 @@ function getSpecValue(specs, ...keys) {
           document.getElementById("filterStock").value = "low_stock";
 
         document.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") closeModal();
+          if (e.key === "Escape" && typeof closeModal === "function") {
+            closeModal();
+          }
         });
 
         if (editId) {
@@ -998,56 +998,55 @@ function getSpecValue(specs, ...keys) {
           document.getElementById("stock").value = c.stock || 0;
           document.getElementById("lowStockThreshold").value =
             c.low_stock_threshold ?? c.lowStockThreshold ?? 5;
-          document.getElementById("status").value = c.status || "active";
+          document.getElementById("status").value =
+            (c.status || "active").toLowerCase();
 
-         let specs = {};
-if (typeof c.specs === "object" && c.specs !== null) {
-  specs = c.specs;
-} else if (typeof c.specs === "string" && c.specs.trim()) {
-  try {
-    specs = JSON.parse(c.specs);
-  } catch {
-    specs = {};
-  }
-}
+          let specs = {};
+          if (typeof c.specs === "object" && c.specs !== null) {
+            specs = c.specs;
+          } else if (typeof c.specs === "string" && c.specs.trim()) {
+            try {
+              specs = JSON.parse(c.specs);
+            } catch {
+              specs = {};
+            }
+          }
 
-// dito na gumamit ng helper para kahit anong key name sa DB, mababasa
-selectOrAddOption(
-  document.getElementById("specSocket"),
-  getSpecValue(specs, "socket", "Socket")
-);
+          // dito na gumamit ng helper para kahit anong key name sa DB, mababasa
+          selectOrAddOption(
+            document.getElementById("specSocket"),
+            getSpecValue(specs, "socket", "Socket")
+          );
 
-selectOrAddOption(
-  document.getElementById("specChipset"),
-  getSpecValue(specs, "chipset", "Chipset")
-);
+          selectOrAddOption(
+            document.getElementById("specChipset"),
+            getSpecValue(specs, "chipset", "Chipset")
+          );
 
-selectOrAddOption(
-  document.getElementById("specDDR"),
-  getSpecValue(specs, "ddr", "DDR", "memory_type")
-);
+          selectOrAddOption(
+            document.getElementById("specDDR"),
+            getSpecValue(specs, "ddr", "DDR", "memory_type")
+          );
 
-selectOrAddOption(
-  document.getElementById("specVRAM"),
-  getSpecValue(specs, "vramGb", "vram_gb", "vram", "VRAM (GB)")
-);
+          selectOrAddOption(
+            document.getElementById("specVRAM"),
+            getSpecValue(specs, "vramGb", "vram_gb", "vram", "VRAM (GB)")
+          );
 
-selectOrAddOption(
-  document.getElementById("specTDP"),
-  getSpecValue(specs, "tdp", "TDP", "tdpW", "tdp_w")
-);
+          selectOrAddOption(
+            document.getElementById("specTDP"),
+            getSpecValue(specs, "tdp", "TDP", "tdpW", "tdp_w")
+          );
 
-selectOrAddOption(
-  document.getElementById("specLength"),
-  getSpecValue(specs, "lengthMm", "length_mm", "length")
-);
+          selectOrAddOption(
+            document.getElementById("specLength"),
+            getSpecValue(specs, "lengthMm", "length_mm", "length")
+          );
 
-selectOrAddOption(
-  document.getElementById("specFormFactor"),
-  getSpecValue(specs, "formFactor", "form_factor", "Form Factor")
-);
-
-
+          selectOrAddOption(
+            document.getElementById("specFormFactor"),
+            getSpecValue(specs, "formFactor", "form_factor", "Form Factor")
+          );
 
           if (c.image_url) {
             currentImageUrl = c.image_url;
@@ -1083,136 +1082,183 @@ selectOrAddOption(
         document.getElementById("currentImage").classList.add("hidden");
       }
 
-     async function saveComponent(e) {
-  e.preventDefault();
-
-  try {
-    let image_url = currentImageUrl || null;
-    const imageFile = document.getElementById("imageInput").files[0];
-
-    // upload new image kung meron
-    if (imageFile) {
-      image_url = await uploadImage(imageFile, "components");
-    }
-
-    // specs: allow null pag walang laman
-    const specs = {
-      socket: document.getElementById("specSocket").value || null,
-      chipset: document.getElementById("specChipset").value || null,
-      ddr: document.getElementById("specDDR").value || null,
-      vramGb: document.getElementById("specVRAM").value || null,
-      tdp: document.getElementById("specTDP").value || null,
-      lengthMm: document.getElementById("specLength").value || null,
-      formFactor: document.getElementById("specFormFactor").value || null,
-    };
-
-    // kung lahat null, huwag na mag-send ng specs
-    const hasAnySpec = Object.values(specs).some(v => v !== null);
-    const specsPayload = hasAnySpec ? specs : null;
-
-    const selectedLabel = document.getElementById("type").value;
-    // kung label (CPU/GPU/...) gagamitin natin mapping,
-    // kung uuid na, dederetso lang
-    const categoryId =
-      TYPE_LABEL_TO_CATEGORY_ID[selectedLabel] || selectedLabel || null;
-
-    const payload = {
-      name: document.getElementById("model").value || null,
-      brand: document.getElementById("brand").value || null,
-      category_id: categoryId,
-      price: Number(document.getElementById("price").value) || 0,
-      vendor: document.getElementById("vendor").value || null,
-      stock: Number(document.getElementById("stock").value) || 0,
-      low_stock_threshold:
-        Number(document.getElementById("lowStockThreshold").value) || 5,
-      status: document.getElementById("status").value || "active",
-      image_url,
-      specs: specsPayload,
-    };
-
-    console.log("SAVE COMPONENT PAYLOAD:", payload);
-
-    if (editID) {
-      // UPDATE
-      await api().put(`/componentsadmin/${editID}`, payload);
-      showToast("Component updated");
-    } else {
-      // CREATE
-      await api().post("/componentsadmin", payload);
-      showToast("Component added");
-    }
-
-    closeModal();
-    loadComponents();
-  } catch (err) {
-    handleApiError(err);
-  }
-}
-
-
-      function closeModal() {
-        document.getElementById("componentModal").classList.add("hidden");
-        editID = null;
-        currentImageUrl = null;
-        document.getElementById("imageInput").value = "";
+      // kapag nagpalit ng Type (CPU/GPU/MOBO...) linisin specs para iwas halo-halo
+      function onTypeChange() {
+        document.getElementById("specSocket").value = "";
+        document.getElementById("specChipset").value = "";
+        document.getElementById("specDDR").value = "";
+        document.getElementById("specVRAM").value = "";
+        document.getElementById("specTDP").value = "";
+        document.getElementById("specLength").value = "";
+        document.getElementById("specFormFactor").value = "";
       }
 
+      async function saveComponent(e) {
+        e.preventDefault();
+
+        try {
+          // ---------- IMAGE ----------
+          let image_url = currentImageUrl || null;
+          const imageFile = document.getElementById("imageInput").files[0];
+
+          if (imageFile) {
+            image_url = await uploadImage(imageFile, "components");
+          }
+
+          // ---------- SPECS ----------
+          const rawSpecs = {
+            socket: document.getElementById("specSocket").value || null,
+            chipset: document.getElementById("specChipset").value || null,
+            ddr: document.getElementById("specDDR").value || null,
+            vramGb: document.getElementById("specVRAM").value || null,
+            tdp: document.getElementById("specTDP").value || null,
+            lengthMm: document.getElementById("specLength").value || null,
+            formFactor:
+              document.getElementById("specFormFactor").value || null,
+          };
+
+          const specs = {};
+          for (const [k, v] of Object.entries(rawSpecs)) {
+            if (v !== null && v !== "") specs[k] = v;
+          }
+          // laging may specs key (kahit empty object)
+          const specsPayload = specs;
+
+          // ---------- CATEGORY ----------
+          const selectedLabel = document.getElementById("type").value;
+          let categoryId =
+            TYPE_LABEL_TO_CATEGORY_ID[selectedLabel] || selectedLabel || null;
+
+          if (!categoryId && editID) {
+            // update mode: huwag gagalawin category kung di napili
+            categoryId = undefined;
+          } else if (!categoryId && !editID) {
+            showToast("Please select a component type.", "error");
+            return;
+          }
+
+          // ---------- VALUES ----------
+          const name = document.getElementById("model").value || null;
+          const brand = document.getElementById("brand").value || null;
+          const price = Number(document.getElementById("price").value) || 0;
+          const vendor = document.getElementById("vendor").value || null;
+          const stock = Number(document.getElementById("stock").value) || 0;
+          const lowThresh =
+            Number(document.getElementById("lowStockThreshold").value) || 5;
+          const status =
+            document.getElementById("status").value || "active";
+
+          // ---------- PAYLOAD ----------
+          const payload = {
+            name,
+            brand,
+            price,
+            vendor,
+            stock,
+            // pareho camel at snake case
+            lowStockThreshold: lowThresh,
+            low_stock_threshold: lowThresh,
+            status,
+            specs: specsPayload,
+          };
+
+          if (image_url !== null) {
+            payload.image_url = image_url;
+          }
+          if (typeof categoryId !== "undefined") {
+            payload.category_id = categoryId;
+          }
+
+          console.log("SAVE COMPONENT PAYLOAD:", payload);
+
+          // ---------- REQUEST ----------
+          if (editID) {
+            await api().put(`/componentsadmin/${editID}`, payload);
+            showToast("Component updated");
+          } else {
+            await api().post("/componentsadmin", payload);
+            showToast("Component added");
+          }
+
+          if (typeof closeModal === "function") {
+            closeModal();
+          }
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
+
+      // GLOBAL closeModal (para hindi mag ReferenceError)
+      window.closeModal = function closeModal() {
+        const modal = document.getElementById("componentModal");
+        if (modal) modal.classList.add("hidden");
+
+        editID = null;
+        currentImageUrl = null;
+
+        const fileInput = document.getElementById("imageInput");
+        if (fileInput) fileInput.value = "";
+      };
+
       async function deleteItem(id) {
-  const ok = await openConfirmModal({
-    title: "Delete Component",
-    message:
-      "This will permanently delete this component. This action cannot be undone.",
-    confirmText: "Delete",
-    confirmVariant: "danger",
-    requireText: "DELETE",
-    requireTextLabel: "Type DELETE to confirm:",
-    requireTextHint: "To prevent mistakes, type DELETE in all caps.",
-  });
+        const ok = await openConfirmModal({
+          title: "Delete Component",
+          message:
+            "This will permanently delete this component. This action cannot be undone.",
+          confirmText: "Delete",
+          confirmVariant: "danger",
+          requireText: "DELETE",
+          requireTextLabel: "Type DELETE to confirm:",
+          requireTextHint: "To prevent mistakes, type DELETE in all caps.",
+        });
 
-  if (!ok) return;
+        if (!ok) return;
 
-  try {
-    await api().delete(`/componentsadmin/${id}`);
-    showToast("Component deleted");
-    loadComponents();
-  } catch (err) {
-    handleApiError(err);
-  }
-}
+        try {
+          await api().delete(`/componentsadmin/${id}`);
+          showToast("Component deleted");
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
 
       async function toggleStatus(id, currentStatus) {
-  const normalized = (currentStatus || "active").toLowerCase();
-  const newStatus = normalized === "active" ? "inactive" : "active";
+        const normalized = (currentStatus || "active").toLowerCase();
+        const newStatus = normalized === "active" ? "inactive" : "active";
 
-  const activating = newStatus === "active";
-  const word = activating ? "ACTIVATE" : "DEACTIVATE";
+        const activating = newStatus === "active";
+        const word = activating ? "ACTIVATE" : "DEACTIVATE";
 
-  const ok = await openConfirmModal({
-    title: activating ? "Activate Component" : "Deactivate Component",
-    message: activating
-      ? "Activate this component so it can be used in builds and orders?"
-      : "Deactivate this component? It will no longer be selectable in builds and orders.",
-    confirmText: activating ? "Activate" : "Deactivate",
-    confirmVariant: activating ? "primary" : "danger",
-    requireText: word,
-    requireTextLabel: `Type ${word} to confirm:`,
-    requireTextHint: `To prevent mistakes, type ${word} in all caps.`,
-  });
+        const ok = await openConfirmModal({
+          title: activating ? "Activate Component" : "Deactivate Component",
+          message: activating
+            ? "Activate this component so it can be used in builds and orders?"
+            : "Deactivate this component? It will no longer be selectable in builds and orders.",
+          confirmText: activating ? "Activate" : "Deactivate",
+          confirmVariant: activating ? "primary" : "danger",
+          requireText: word,
+          requireTextLabel: `Type ${word} to confirm:`,
+          requireTextHint: `To prevent mistakes, type ${word} in all caps.`,
+        });
 
-  if (!ok) return;
+        if (!ok) return;
 
-  try {
-    await api().put(`/componentsadmin/${id}`, { status: newStatus });
-    showToast(
-      `Component ${newStatus === "active" ? "activated" : "deactivated"}`
-    );
-    loadComponents();
-  } catch (err) {
-    handleApiError(err);
-  }
-}
-
+        try {
+          await api().put(`/componentsadmin/${id}`, { status: newStatus });
+          showToast(
+            `Component ${
+              newStatus === "active" ? "activated" : "deactivated"
+            }`
+          );
+          loadComponents();
+        } catch (err) {
+          handleApiError(err);
+        }
+      }
     </script>
+
   </body>
 </html>
   

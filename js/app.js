@@ -157,10 +157,32 @@ function showLoading(element) {
 
 // Utility: Handle API errors gracefully
 function handleApiError(error) {
-  const message = error.response?.data?.message || error.message || "An error occurred";
+  const status = error.response?.status;
+  const data = error.response?.data;
+
+  let backendMessage = null;
+  if (data) {
+    backendMessage =
+      data.message || data.error || data.detail || JSON.stringify(data);
+  }
+
+  const message =
+    backendMessage || error.message || "An unexpected error occurred";
+
   showToast(message, "error");
-  console.error("API Error:", error);
+
+  console.groupCollapsed(`API Error ${status || ""}`);
+  console.log("Request URL:", error.config?.url);
+  console.log("Request method:", error.config?.method);
+  console.log("Request data:", error.config?.data);
+  console.log("Status:", status);
+  console.log("Response data (raw):", data);
+  console.log("Response data (string):", JSON.stringify(data, null, 2));
+  console.log("Full error object:", error);
+  console.groupEnd();
 }
+
+
 
 // Utility: Upload image to Supabase Storage
 // js/app.js
